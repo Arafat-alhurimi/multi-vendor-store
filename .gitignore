@@ -15,9 +15,13 @@
 /node_modules
 /public/build
 /public/hot
+/public/css/filament
+/public/js/filament
+/public/fonts/filament
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/backups
 /vendor
 Homestead.json
 Homestead.yaml
