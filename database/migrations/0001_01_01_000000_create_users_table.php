@@ -11,14 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('users', function (Blueprint $table) {
-            $table->id();
-            $table->string('name');
-            $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
-            $table->string('password');
-            $table->rememberToken();
-            $table->timestamps();
+       Schema::create('users', function (Blueprint $table) {
+          $table->id();
+          $table->string('name');
+          $table->string('email')->unique()->nullable(); // يمكن أن يكون البريد الإلكتروني اختياريًا
+          $table->string('phone')->unique()->nullable(); // للتحقق عبر واتساب
+          $table->string('password');
+          $table->enum('role', ['admin', 'vendor', 'customer'])->default('customer');
+          $table->string('avatar')->nullable();
+          $table->boolean('is_active')->default(true);
+          $table->rememberToken();
+          $table->timestamps();
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
