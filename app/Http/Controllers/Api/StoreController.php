@@ -18,6 +18,10 @@ class StoreController extends Controller
             return response()->json(['message' => 'لا يمكن إنشاء متجر إلا للبائع.'], 403);
         }
 
+        if ($user->stores()->exists()) {
+            return response()->json(['message' => 'لا يمكن إنشاء أكثر من متجر لنفس البائع.'], 422);
+        }
+
         $data = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',

@@ -14,6 +14,7 @@ use App\Filament\Resources\Stores\Tables\StoresTable;
 use App\Models\Store;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
@@ -59,7 +60,7 @@ class StoreResource extends Resource
 
     public static function canCreate(): bool
     {
-        return false;
+        return Auth::user()?->role === 'admin';
     }
 
     public static function canEdit(Model $record): bool

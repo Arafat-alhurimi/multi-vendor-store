@@ -21,6 +21,14 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (PHP_SAPI !== 'cli') {
+            @ini_set('max_execution_time', '300');
+
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(300);
+            }
+        }
+
         Promotion::observe(PromotionObserver::class);
     }
 }

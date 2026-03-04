@@ -12,6 +12,7 @@ use App\Filament\Resources\Users\Tables\UsersTable;
 use App\Models\User;
 use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
@@ -57,7 +58,7 @@ class UserResource extends Resource
 
     public static function canCreate(): bool
     {
-        return false;
+        return Auth::user()?->role === 'admin';
     }
 
     public static function canEdit(Model $record): bool

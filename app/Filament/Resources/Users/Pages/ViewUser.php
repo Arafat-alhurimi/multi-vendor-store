@@ -2,12 +2,17 @@
 
 namespace App\Filament\Resources\Users\Pages;
 
+use App\Filament\Resources\Stores\StoreResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Models\User;
 use Filament\Actions\Action;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Tabs;
+use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
 
 class ViewUser extends ViewRecord
@@ -17,6 +22,12 @@ class ViewUser extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Action::make('createStore')
+                ->label('إنشاء متجر')
+                ->icon('heroicon-o-building-storefront')
+                ->color('primary')
+                ->visible(fn (): bool => $this->getRecord()->role === 'vendor' && ! $this->getRecord()->store)
+                ->url(fn (): string => StoreResource::getUrl('create', ['user_id' => $this->getRecord()->id])),
             Action::make('toggleActive')
                 ->label(fn (): string => $this->getRecord()->is_active ? 'إلغاء التفعيل' : 'تفعيل الحساب')
                 ->color(fn (): string => $this->getRecord()->is_active ? 'danger' : 'success')
@@ -107,28 +118,158 @@ class ViewUser extends ViewRecord
                 TextEntry::make('is_active')
                     ->label('الحالة')
                     ->formatStateUsing(fn (bool $state): string => $state ? 'نشط' : 'غير نشط'),
-                TextEntry::make('store.name')->label('المتجر')->placeholder('لا يوجد متجر'),
                 TextEntry::make('vendorFinancialDetail.kuraimi_account_number')
                     ->label('رقم حساب الكريمي')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.kuraimi_account_name')
                     ->label('اسم حساب الكريمي')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.jeeb_id')
                     ->label('معرّف جيب')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.jeeb_name')
                     ->label('اسم حساب جيب')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.card_image')
                     ->label('صورة البطاقة (أمام)')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.back_card_image')
                     ->label('صورة البطاقة (خلف)')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.total_commission_owed')
                     ->label('إجمالي العمولات المستحقة')
+                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
+                Tabs::make('البيانات الشرائية')
+                    ->visible(fn (?User $record): bool => $record?->role === 'customer')
+                    ->tabs([
+                        Tab::make('السلة')
+                            ->badge(fn (): int => (int) $this->getRecord()->cartItems()->count())
+                            ->schema([
+                                RepeatableEntry::make('cartItems')
+                                    ->label('عناصر السلة')
+                                    ->placeholder('لا توجد عناصر في السلة')
+                                    ->schema([
+                                        TextEntry::make('product.name_ar')->label('المنتج')->placeholder('-'),
+                                        TextEntry::make('quantity')->label('الكمية')->placeholder('-'),
+                                        TextEntry::make('price_at_add')->label('السعر عند الإضافة')->placeholder('-'),
+                                        TextEntry::make('created_at')->label('تاريخ الإضافة')->since()->placeholder('-'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                        Tab::make('الطلبات')
+                            ->badge(fn (): int => (int) $this->getRecord()->orders()->count())
+                            ->schema([
+                                RepeatableEntry::make('orders')
+                                    ->label('الطلبات')
+                                    ->placeholder('لا توجد طلبات')
+                                    ->schema([
+                                        TextEntry::make('order_number')->label('رقم الطلب')->placeholder('-'),
+                                        TextEntry::make('product.name_ar')->label('المنتج')->placeholder('-'),
+                                        TextEntry::make('quantity')->label('الكمية')->placeholder('-'),
+                                        TextEntry::make('total_price')->label('الإجمالي')->placeholder('-'),
+                                        TextEntry::make('status')->label('حالة الطلب')->placeholder('-'),
+                                        TextEntry::make('created_at')->label('تاريخ الطلب')->since()->placeholder('-'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                    ])
+                    ->columnSpanFull(),
+                Tabs::make('التفاعل')
+                    ->visible(fn (?User $record): bool => $record?->role === 'customer')
+                    ->tabs([
+                        Tab::make('التعليقات')
+                            ->badge(fn (): int => (int) $this->getRecord()->comments()->count())
+                            ->schema([
+                                RepeatableEntry::make('comments')
+                                    ->label('التعليقات')
+                                    ->placeholder('لا توجد تعليقات')
+                                    ->schema([
+                                        TextEntry::make('body')->label('التعليق')->placeholder('-')->columnSpanFull(),
+                                        TextEntry::make('commentable_type')
+                                            ->label('على')
+                                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-')
+                                            ->placeholder('-'),
+                                        TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                        Tab::make('المفضلة')
+                            ->badge(fn (): int => (int) $this->getRecord()->favorites()->count())
+                            ->schema([
+                                RepeatableEntry::make('favorites')
+                                    ->label('العناصر المفضلة')
+                                    ->placeholder('لا توجد عناصر مفضلة')
+                                    ->schema([
+                                        TextEntry::make('favoritable_type')
+                                            ->label('النوع')
+                                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-')
+                                            ->placeholder('-'),
+                                        TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                        Tab::make('البلاغات')
+                            ->badge(fn (): int => (int) $this->getRecord()->reports()->count())
+                            ->schema([
+                                RepeatableEntry::make('reports')
+                                    ->label('البلاغات')
+                                    ->placeholder('لا توجد بلاغات')
+                                    ->schema([
+                                        TextEntry::make('reason')->label('السبب')->placeholder('-')->columnSpanFull(),
+                                        TextEntry::make('reportable_type')
+                                            ->label('على')
+                                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-')
+                                            ->placeholder('-'),
+                                        TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
+                                    ])
+                                    ->columns(2),
+                            ]),
+                    ])
+                    ->columnSpanFull(),
+                Section::make('تفاصيل المتجر')
+                    ->visible(fn (?User $record): bool => $record?->role === 'vendor')
+                    ->schema([
+                        TextEntry::make('store.name')
+                            ->label('اسم المتجر')
+                            ->visible(fn (?User $record): bool => filled($record?->store))
+                            ->color('primary')
+                            ->icon('heroicon-o-arrow-top-right-on-square')
+                            ->url(fn (?User $record): ?string => $record?->store ? StoreResource::getUrl('view', ['record' => $record->store]) : null),
+                        TextEntry::make('store_link')
+                            ->label('الانتقال')
+                            ->state('فتح صفحة المتجر')
+                            ->badge()
+                            ->color('primary')
+                            ->visible(fn (?User $record): bool => filled($record?->store))
+                            ->url(fn (?User $record): ?string => $record?->store ? StoreResource::getUrl('view', ['record' => $record->store]) : null),
+                        TextEntry::make('store.city')
+                            ->label('مدينة المتجر')
+                            ->visible(fn (?User $record): bool => filled($record?->store))
+                            ->placeholder('-'),
+                        TextEntry::make('store.address')
+                            ->label('عنوان المتجر')
+                            ->visible(fn (?User $record): bool => filled($record?->store))
+                            ->placeholder('-'),
+                        TextEntry::make('store.is_active')
+                            ->label('حالة المتجر')
+                            ->visible(fn (?User $record): bool => filled($record?->store))
+                            ->formatStateUsing(fn (?bool $state): string => $state ? 'نشط' : 'غير نشط')
+                            ->badge(),
+                        TextEntry::make('store_status')
+                            ->label('المتجر')
+                            ->state('لا يوجد متجر لهذا البائع')
+                            ->badge()
+                            ->visible(fn (?User $record): bool => blank($record?->store)),
+                    ])
+                    ->columns(2)
+                    ->columnSpanFull(),
             ])
             ->columns(2);
     }

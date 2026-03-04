@@ -29,8 +29,6 @@ class UserForm
                     ->options(['admin' => 'Admin', 'vendor' => 'Vendor', 'customer' => 'Customer'])
                     ->default('customer')
                     ->required(),
-                TextInput::make('avatar')
-                    ->default(null),
                 Toggle::make('is_active')
                     ->required(),
             ]);

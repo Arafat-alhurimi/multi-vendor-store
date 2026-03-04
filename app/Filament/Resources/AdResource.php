@@ -20,11 +20,12 @@ use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Auth;
 
 class AdResource extends Resource
 {
     protected static ?string $model = Ad::class;
+
+    protected static bool $shouldRegisterNavigation = false;
 
     protected static ?string $navigationLabel = 'الإعلانات';
 
@@ -34,22 +35,22 @@ class AdResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return Auth::user()?->role === 'admin';
+        return false;
     }
 
     public static function canCreate(): bool
     {
-        return Auth::user()?->role === 'admin';
+        return false;
     }
 
     public static function canEdit(Model $record): bool
     {
-        return Auth::user()?->role === 'admin';
+        return false;
     }
 
     public static function canDelete(Model $record): bool
     {
-        return Auth::user()?->role === 'admin';
+        return false;
     }
 
     public static function form(Schema $schema): Schema

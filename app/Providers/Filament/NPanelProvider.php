@@ -10,6 +10,7 @@ use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Filament\Widgets\AccountWidget;
 use Filament\Widgets\FilamentInfoWidget;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
@@ -26,6 +27,7 @@ class NPanelProvider extends PanelProvider
         return $panel
             ->id('n')
             ->path('n')
+            ->spa()
             ->colors([
                 'primary' => Color::Amber,
             ])
@@ -53,6 +55,10 @@ class NPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])->databaseNotifications(livewireComponent: \App\Livewire\Filament\DatabaseNotifications::class)
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.global-upload-progress'),
+            )
             ;
     }
 }

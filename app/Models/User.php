@@ -77,8 +77,9 @@ class User extends Authenticatable
     
     public function canAccessPanel(Panel $panel): bool
     {
-        // السماح فقط للأدمن بدخول لوحة التحكم
-        return $this->role === 'admin';
+        $adminRole = env('FILAMENT_ADMIN_ROLE', 'admin');
+
+        return $this->role === $adminRole;
     }
     
     /**

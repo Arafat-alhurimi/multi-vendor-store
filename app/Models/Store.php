@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\PromotionItem;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,6 +20,22 @@ class Store extends Model
 
     protected static function booted(): void
     {
+        static::creating(function (Store $store): void {
+            if (! $store->user_id) {
+                return;
+            }
+
+            $alreadyHasStore = static::query()
+                ->where('user_id', $store->user_id)
+                ->exists();
+
+            if ($alreadyHasStore) {
+                throw ValidationException::withMessages([
+                    'user_id' => 'لا يمكن إنشاء أكثر من متجر للبائع نفسه.',
+                ]);
+            }
+        });
+
         static::saving(function (Store $store): void {
             if ($store->user_id && ! $store->user?->is_active) {
                 $store->is_active = false;

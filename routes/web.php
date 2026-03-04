@@ -1,9 +1,10 @@
 <?php
 
+use App\Http\Controllers\S3DirectUploadController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return view('welcome');
+    return redirect()->route('filament.admin.auth.login');
 });
 
 // Simple admin notifications page for viewing details
@@ -39,4 +40,11 @@ Route::post('/admin/notifications/delete/{id}', function ($id) {
     \Illuminate\Support\Facades\DB::table('filament_notifications')->where('id', $id)->delete();
 
     return back();
+});
+
+Route::middleware(['web', 'auth'])->group(function () {
+    Route::post('/s3-direct/sign-put', [S3DirectUploadController::class, 'signPut'])
+        ->name('s3-direct.sign-put');
+    Route::post('/s3-direct/attach-uploaded', [S3DirectUploadController::class, 'attachUploaded'])
+        ->name('s3-direct.attach-uploaded');
 });

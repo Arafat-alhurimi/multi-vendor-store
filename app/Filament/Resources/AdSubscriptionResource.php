@@ -23,11 +23,33 @@ class AdSubscriptionResource extends Resource
 {
     protected static ?string $model = VendorAdSubscription::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationLabel = 'اشتراكات الإعلانات';
 
     protected static string | \UnitEnum | null $navigationGroup = 'الإعلانات';
 
     protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-clipboard-document-list';
+
+    public static function canViewAny(): bool
+    {
+        return false;
+    }
+
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        return false;
+    }
 
     public static function form(Schema $schema): Schema
     {
