@@ -9,10 +9,11 @@ use Illuminate\Notifications\Notifiable;
 use App\Models\FilamentDatabaseNotification;
 use Laravel\Sanctum\HasApiTokens;
 use Filament\Panel;
+use Filament\Models\Contracts\FilamentUser;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use App\Models\VendorAdSubscription;
 
-class User extends Authenticatable
+class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasFactory, Notifiable, HasApiTokens;
