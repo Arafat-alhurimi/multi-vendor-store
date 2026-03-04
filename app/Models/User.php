@@ -77,9 +77,17 @@ class User extends Authenticatable
     
     public function canAccessPanel(Panel $panel): bool
     {
-        $adminRole = env('FILAMENT_ADMIN_ROLE', 'admin');
+        $adminRole = strtolower(trim((string) env('FILAMENT_ADMIN_ROLE', 'admin')));
+        $userRole = strtolower(trim((string) $this->role));
 
-        return $this->role === $adminRole;
+        if ($userRole !== '' && $userRole === $adminRole) {
+            return true;
+        }
+
+        $adminEmail = strtolower(trim((string) env('FILAMENT_ADMIN_EMAIL', '')));
+        $userEmail = strtolower(trim((string) $this->email));
+
+        return $adminEmail !== '' && $userEmail === $adminEmail;
     }
     
     /**
