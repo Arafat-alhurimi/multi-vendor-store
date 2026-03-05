@@ -183,6 +183,11 @@ class AuthController extends Controller
                 'message' => 'إعدادات Firebase غير مكتملة على الخادم',
             ], 503);
         } catch (\Exception $e) {
+            Log::error('OTP verify failed: '.$e->getMessage(), [
+                'class' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json(['message' => 'فشل التحقق من الكود'], 401);
         }
     }
@@ -240,6 +245,11 @@ public function forgotPassword(Request $request)
 
         return response()->json(['error' => 'إعدادات Firebase غير مكتملة على الخادم'], 503);
     } catch (\Exception $e) {
+        Log::error('Forgot password Firebase verify failed: '.$e->getMessage(), [
+            'class' => get_class($e),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
         return response()->json(['error' => 'رمز غير صالح ❌'], 401);
     }
 }
