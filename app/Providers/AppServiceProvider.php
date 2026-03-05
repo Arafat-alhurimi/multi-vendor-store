@@ -13,6 +13,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $projectId = env('FIREBASE_PROJECT_ID');
+
+        if (is_string($projectId) && trim($projectId) !== '') {
+            $this->app['config']->set('firebase.projects.app.project_id', trim($projectId));
+        }
+
         $credentials = env('FIREBASE_CREDENTIALS', env('GOOGLE_APPLICATION_CREDENTIALS'));
 
         if (! is_string($credentials) || trim($credentials) === '') {

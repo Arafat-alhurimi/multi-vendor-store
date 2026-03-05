@@ -8,6 +8,7 @@ use App\Models\User;
 use Filament\Actions\Action;
 use Illuminate\Http\Request;
 use Kreait\Firebase\Contract\Auth as FirebaseAuth;
+use Kreait\Firebase\Exception\InvalidArgumentException as FirebaseInvalidArgumentException;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -17,13 +18,6 @@ use Filament\Notifications\Notification;
 
 class AuthController extends Controller
 {
-    protected $firebase;
-
-    public function __construct(FirebaseAuth $firebase)
-    {
-        $this->firebase = $firebase;
-    }
-
     // 1. تسجيل البيانات الأولية
     public function register(Request $request)
     {
@@ -146,8 +140,10 @@ class AuthController extends Controller
     public function verifyOtp(Request $request)
     {
         try {
+            $firebase = app(FirebaseAuth::class);
+
             // التحقق من توكن فايربيز المرسل من فلاتر
-            $verifiedIdToken = $this->firebase->verifyIdToken($request->firebase_token);
+            $verifiedIdToken = $firebase->verifyIdToken($request->firebase_token);
             $phone = $verifiedIdToken->claims()->get('phone_number');
 
             // البحث عن المستخدم (يجب تنظيف الرقم ليطابق صيغة فايربيز +966...)
@@ -180,6 +176,12 @@ class AuthController extends Controller
                 'user' => $user
             ]);
 
+        } catch (FirebaseInvalidArgumentException $e) {
+            Log::error('Firebase credentials/config error: '.$e->getMessage());
+
+            return response()->json([
+                'message' => 'إعدادات Firebase غير مكتملة على الخادم',
+            ], 503);
         } catch (\Exception $e) {
             return response()->json(['message' => 'فشل التحقق من الكود'], 401);
         }
@@ -216,8 +218,10 @@ public function forgotPassword(Request $request)
     $newPassword = $request->input('new_password');
 
     try {
+        $firebase = app(FirebaseAuth::class);
+
         // التحقق من توكن فايربيز المرسل من فلاتر
-        $verifiedIdToken = $this->firebase->verifyIdToken($request->firebase_token);
+        $verifiedIdToken = $firebase->verifyIdToken($request->firebase_token);
         $phone = $verifiedIdToken->claims()->get('phone_number');
 
         // البحث عن المستخدم عبر رقم الهاتف
@@ -231,6 +235,10 @@ public function forgotPassword(Request $request)
         }
 
         return response()->json(['error' => 'المستخدم غير موجود'], 404);
+    } catch (FirebaseInvalidArgumentException $e) {
+        Log::error('Firebase credentials/config error: '.$e->getMessage());
+
+        return response()->json(['error' => 'إعدادات Firebase غير مكتملة على الخادم'], 503);
     } catch (\Exception $e) {
         return response()->json(['error' => 'رمز غير صالح ❌'], 401);
     }
