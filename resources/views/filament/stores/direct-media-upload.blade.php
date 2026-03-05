@@ -279,6 +279,8 @@ function storeDirectUploader() {
 
                 this.ok('تم رفع الوسائط وربطها بالمتجر بنجاح.');
                 this.statusText = 'اكتمل رفع كل الوسائط بنجاح';
+            } catch (error) {
+                throw error;
             }
         },
 

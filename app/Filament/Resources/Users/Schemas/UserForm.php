@@ -18,13 +18,16 @@ class UserForm
                 TextInput::make('email')
                     ->label('Email address')
                     ->email()
+                    ->unique(ignoreRecord: true)
                     ->default(null),
                 TextInput::make('phone')
                     ->tel()
+                    ->unique(ignoreRecord: true)
                     ->default(null),
                 TextInput::make('password')
                     ->password()
-                    ->required(),
+                    ->required(fn (?string $operation): bool => $operation === 'create')
+                    ->minLength(6),
                 Select::make('role')
                     ->options(['admin' => 'Admin', 'vendor' => 'Vendor', 'customer' => 'Customer'])
                     ->default('customer')

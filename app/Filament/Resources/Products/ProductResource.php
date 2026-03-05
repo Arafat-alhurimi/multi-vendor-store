@@ -6,9 +6,6 @@ use App\Filament\Resources\Products\Pages\CreateProduct;
 use App\Filament\Resources\Products\Pages\EditProduct;
 use App\Filament\Resources\Products\Pages\ListProducts;
 use App\Filament\Resources\Products\Pages\ViewProduct;
-use App\Filament\Resources\Products\RelationManagers\CommentsRelationManager;
-use App\Filament\Resources\Products\RelationManagers\MediaRelationManager;
-use App\Filament\Resources\Products\RelationManagers\VariantsRelationManager;
 use App\Filament\Resources\Products\Schemas\ProductForm;
 use App\Filament\Resources\Products\Tables\ProductsTable;
 use App\Models\Product;
@@ -26,7 +23,7 @@ class ProductResource extends Resource
 
     protected static ?string $navigationLabel = 'المنتجات';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'المتاجر';
+    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
 
     protected static ?int $navigationSort = 3;
 
@@ -42,11 +39,7 @@ class ProductResource extends Resource
 
     public static function getRelations(): array
     {
-        return [
-            VariantsRelationManager::class,
-            CommentsRelationManager::class,
-            MediaRelationManager::class,
-        ];
+        return [];
     }
 
     public static function getPages(): array

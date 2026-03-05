@@ -18,11 +18,13 @@ class AttributeResource extends Resource
 {
     protected static ?string $model = Attribute::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static BackedEnum|string|null $navigationIcon = 'heroicon-o-tag';
 
     protected static ?string $navigationLabel = 'الخصائص';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'المتاجر';
+    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
 
     protected static ?int $navigationSort = 4;
 

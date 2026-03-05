@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\Users\Pages;
 
+use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\Stores\StoreResource;
 use App\Filament\Resources\Users\UserResource;
+use App\Models\Comment;
 use App\Models\User;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -192,9 +194,56 @@ class ViewUser extends ViewRecord
                                     ->placeholder('لا توجد تعليقات')
                                     ->schema([
                                         TextEntry::make('body')->label('التعليق')->placeholder('-')->columnSpanFull(),
-                                        TextEntry::make('commentable_type')
-                                            ->label('على')
-                                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-')
+                                        TextEntry::make('comment_target_type')
+                                            ->label('نوع الهدف')
+                                            ->state(function (?Comment $record): string {
+                                                if (! $record?->commentable_type) {
+                                                    return '-';
+                                                }
+
+                                                return match ($record->commentable_type) {
+                                                    \App\Models\Product::class => 'منتج',
+                                                    \App\Models\Store::class => 'متجر',
+                                                    default => class_basename($record->commentable_type),
+                                                };
+                                            })
+                                            ->placeholder('-'),
+                                        TextEntry::make('comment_target_name')
+                                            ->label('تم التعليق على')
+                                            ->state(function (?Comment $record): string {
+                                                $target = $record?->commentable;
+
+                                                if (! $target) {
+                                                    return '-';
+                                                }
+
+                                                if ($target instanceof \App\Models\Product) {
+                                                    return $target->name_ar ?: $target->name_en ?: ('#' . $target->id);
+                                                }
+
+                                                if ($target instanceof \App\Models\Store) {
+                                                    return $target->name ?: ('#' . $target->id);
+                                                }
+
+                                                return '#' . $target->id;
+                                            })
+                                            ->url(function (?Comment $record): ?string {
+                                                if (! $record?->commentable_id || ! $record?->commentable_type) {
+                                                    return null;
+                                                }
+
+                                                if ($record->commentable_type === \App\Models\Product::class) {
+                                                    return ProductResource::getUrl('view', ['record' => $record->commentable_id]);
+                                                }
+
+                                                if ($record->commentable_type === \App\Models\Store::class) {
+                                                    return StoreResource::getUrl('view', ['record' => $record->commentable_id]);
+                                                }
+
+                                                return null;
+                                            })
+                                            ->icon('heroicon-o-arrow-top-right-on-square')
+                                            ->color('primary')
                                             ->placeholder('-'),
                                         TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
                                     ])
@@ -207,9 +256,56 @@ class ViewUser extends ViewRecord
                                     ->label('العناصر المفضلة')
                                     ->placeholder('لا توجد عناصر مفضلة')
                                     ->schema([
-                                        TextEntry::make('favoritable_type')
-                                            ->label('النوع')
-                                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-')
+                                        TextEntry::make('favorite_target_type')
+                                            ->label('نوع الهدف')
+                                            ->state(function (?\App\Models\Favorite $record): string {
+                                                if (! $record?->favoritable_type) {
+                                                    return '-';
+                                                }
+
+                                                return match ($record->favoritable_type) {
+                                                    \App\Models\Product::class => 'منتج',
+                                                    \App\Models\Store::class => 'متجر',
+                                                    default => class_basename($record->favoritable_type),
+                                                };
+                                            })
+                                            ->placeholder('-'),
+                                        TextEntry::make('favorite_target_name')
+                                            ->label('العنصر المفضّل')
+                                            ->state(function (?\App\Models\Favorite $record): string {
+                                                $target = $record?->favoritable;
+
+                                                if (! $target) {
+                                                    return '-';
+                                                }
+
+                                                if ($target instanceof \App\Models\Product) {
+                                                    return $target->name_ar ?: $target->name_en ?: ('#' . $target->id);
+                                                }
+
+                                                if ($target instanceof \App\Models\Store) {
+                                                    return $target->name ?: ('#' . $target->id);
+                                                }
+
+                                                return '#' . $target->id;
+                                            })
+                                            ->url(function (?\App\Models\Favorite $record): ?string {
+                                                if (! $record?->favoritable_id || ! $record?->favoritable_type) {
+                                                    return null;
+                                                }
+
+                                                if ($record->favoritable_type === \App\Models\Product::class) {
+                                                    return ProductResource::getUrl('view', ['record' => $record->favoritable_id]);
+                                                }
+
+                                                if ($record->favoritable_type === \App\Models\Store::class) {
+                                                    return StoreResource::getUrl('view', ['record' => $record->favoritable_id]);
+                                                }
+
+                                                return null;
+                                            })
+                                            ->icon('heroicon-o-arrow-top-right-on-square')
+                                            ->color('primary')
                                             ->placeholder('-'),
                                         TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
                                     ])
@@ -223,9 +319,61 @@ class ViewUser extends ViewRecord
                                     ->placeholder('لا توجد بلاغات')
                                     ->schema([
                                         TextEntry::make('reason')->label('السبب')->placeholder('-')->columnSpanFull(),
-                                        TextEntry::make('reportable_type')
-                                            ->label('على')
-                                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-')
+                                        TextEntry::make('report_target_type')
+                                            ->label('نوع الهدف')
+                                            ->state(function (?\App\Models\Report $record): string {
+                                                if (! $record?->reportable_type) {
+                                                    return '-';
+                                                }
+
+                                                return match ($record->reportable_type) {
+                                                    \App\Models\Product::class => 'منتج',
+                                                    \App\Models\Store::class => 'متجر',
+                                                    \App\Models\Comment::class => 'تعليق',
+                                                    default => class_basename($record->reportable_type),
+                                                };
+                                            })
+                                            ->placeholder('-'),
+                                        TextEntry::make('report_target_name')
+                                            ->label('تم الإبلاغ عن')
+                                            ->state(function (?\App\Models\Report $record): string {
+                                                $target = $record?->reportable;
+
+                                                if (! $target) {
+                                                    return '-';
+                                                }
+
+                                                if ($target instanceof \App\Models\Product) {
+                                                    return $target->name_ar ?: $target->name_en ?: ('#' . $target->id);
+                                                }
+
+                                                if ($target instanceof \App\Models\Store) {
+                                                    return $target->name ?: ('#' . $target->id);
+                                                }
+
+                                                if ($target instanceof \App\Models\Comment) {
+                                                    return 'تعليق #' . $target->id;
+                                                }
+
+                                                return '#' . $target->id;
+                                            })
+                                            ->url(function (?\App\Models\Report $record): ?string {
+                                                if (! $record?->reportable_id || ! $record?->reportable_type) {
+                                                    return null;
+                                                }
+
+                                                if ($record->reportable_type === \App\Models\Product::class) {
+                                                    return ProductResource::getUrl('view', ['record' => $record->reportable_id]);
+                                                }
+
+                                                if ($record->reportable_type === \App\Models\Store::class) {
+                                                    return StoreResource::getUrl('view', ['record' => $record->reportable_id]);
+                                                }
+
+                                                return null;
+                                            })
+                                            ->icon('heroicon-o-arrow-top-right-on-square')
+                                            ->color('primary')
                                             ->placeholder('-'),
                                         TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
                                     ])

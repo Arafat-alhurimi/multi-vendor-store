@@ -15,4 +15,11 @@ class CreateCategory extends CreateRecord
     {
         return $this->getResource()::getUrl('index');
     }
+
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        $data['order'] = $data['order'] ?? 0;
+
+        return $data;
+    }
 }

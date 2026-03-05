@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Stores\Pages;
 
 use App\Filament\Resources\Stores\StoreResource;
+use App\Filament\Resources\Stores\Widgets\StoresStatsOverview;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
@@ -15,6 +16,13 @@ class ListStores extends ListRecords
         return [
             CreateAction::make()
                 ->label('إنشاء متجر'),
+        ];
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            StoresStatsOverview::class,
         ];
     }
 }

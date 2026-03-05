@@ -14,18 +14,23 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Actions\ViewAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\DeleteAction;
-use App\Filament\Resources\CategoryResource\RelationManagers\SubcategoriesRelationManager;
+use Illuminate\Database\Eloquent\Builder;
 
 class CategoryResource extends Resource
 {
     protected static ?string $model = Category::class;
 
-    protected static string | \UnitEnum | null $navigationGroup = 'المحتوى';
+    protected static ?string $modelLabel = 'فئة رئيسية';
 
-    protected static ?string $navigationLabel = 'الأقسام';
+    protected static ?string $pluralModelLabel = 'الفئات الرئيسية';
+
+    protected static ?string $navigationLabel = 'الفئات الرئيسية';
+
+    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
 
     public static function form(Schema $schema): Schema
     {
@@ -60,11 +65,6 @@ class CategoryResource extends Resource
                 Toggle::make('is_active')
                     ->label('نشط')
                     ->default(true),
-
-                TextInput::make('order')
-                    ->label('ترتيب')
-                    ->numeric()
-                    ->default(0),
             ]);
     }
 
@@ -86,14 +86,47 @@ class CategoryResource extends Resource
                     ->label('الاسم (EN)')
                     ->searchable(),
 
-                TextColumn::make('order')
-                    ->label('ترتيب')
+                TextColumn::make('subcategories_count')
+                    ->label('عدد الفئات الفرعية')
+                    ->counts('subcategories')
+                    ->sortable(),
+
+                TextColumn::make('stores_count')
+                    ->label('عدد المتاجر ضمن هذه الفئة')
+                    ->counts('stores')
                     ->sortable(),
 
                 IconColumn::make('is_active')
                     ->boolean()
                     ->label('نشط')
                     ->sortable(),
+            ])
+            ->filters([
+                TernaryFilter::make('is_active')
+                    ->label('حالة الفئة')
+                    ->trueLabel('نشطة')
+                    ->falseLabel('غير نشطة')
+                    ->placeholder('الكل'),
+                TernaryFilter::make('has_subcategories')
+                    ->label('الفئات الفرعية')
+                    ->trueLabel('تحتوي فئات فرعية')
+                    ->falseLabel('بدون فئات فرعية')
+                    ->placeholder('الكل')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereHas('subcategories'),
+                        false: fn (Builder $query): Builder => $query->whereDoesntHave('subcategories'),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
+                TernaryFilter::make('has_stores')
+                    ->label('المتاجر')
+                    ->trueLabel('مرتبطة بمتاجر')
+                    ->falseLabel('غير مرتبطة بمتاجر')
+                    ->placeholder('الكل')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereHas('stores'),
+                        false: fn (Builder $query): Builder => $query->whereDoesntHave('stores'),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
             ])
             ->defaultSort('order')
             ->recordUrl(fn ($record) => static::getUrl('view', ['record' => $record]))
@@ -106,9 +139,7 @@ class CategoryResource extends Resource
 
     public static function getRelations(): array
     {
-        return [
-            SubcategoriesRelationManager::class,
-        ];
+        return [];
     }
 
     public static function getPages(): array

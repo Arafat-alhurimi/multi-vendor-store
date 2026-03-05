@@ -7,10 +7,12 @@ use Filament\Tables\Columns\BooleanColumn;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use App\Models\User;
 use App\Filament\Resources\Stores\StoreResource;
 use App\Filament\Resources\Users\UserResource;
+use Illuminate\Database\Eloquent\Builder;
 
 class UsersTable
 {
@@ -19,10 +21,11 @@ class UsersTable
     return $table
         ->recordUrl(fn (User $record): string => UserResource::getUrl('view', ['record' => $record]))
         ->columns([
-            TextColumn::make('name')->label('الاسم'),
-            TextColumn::make('phone')->label('رقم الهاتف')->placeholder('-'),
+            TextColumn::make('name')->label('الاسم')->searchable(),
+            TextColumn::make('phone')->label('رقم الهاتف')->placeholder('-')->searchable(),
             TextColumn::make('role')
                 ->label('نوع المستخدم')
+                ->searchable()
                 ->formatStateUsing(fn (string $state): string => match ($state) {
                     'admin' => 'مدير',
                     'vendor' => 'بائع',
@@ -43,6 +46,31 @@ class UsersTable
                     'vendor' => 'بائع',
                     'customer' => 'عميل',
                 ]),
+            TernaryFilter::make('is_active')
+                ->label('حالة الحساب')
+                ->trueLabel('نشط')
+                ->falseLabel('غير نشط')
+                ->placeholder('الكل'),
+            TernaryFilter::make('has_store')
+                ->label('حالة المتجر')
+                ->trueLabel('لديه متجر')
+                ->falseLabel('بدون متجر')
+                ->placeholder('الكل')
+                ->queries(
+                    true: fn (Builder $query): Builder => $query->whereHas('stores'),
+                    false: fn (Builder $query): Builder => $query->whereDoesntHave('stores'),
+                    blank: fn (Builder $query): Builder => $query,
+                ),
+            TernaryFilter::make('otp_verified')
+                ->label('توثيق الحساب')
+                ->trueLabel('موثّق')
+                ->falseLabel('غير موثّق')
+                ->placeholder('الكل')
+                ->queries(
+                    true: fn (Builder $query): Builder => $query->whereNotNull('otp_verified_at'),
+                    false: fn (Builder $query): Builder => $query->whereNull('otp_verified_at'),
+                    blank: fn (Builder $query): Builder => $query,
+                ),
         ])
         ->actions([
             Action::make('viewStore')
@@ -51,7 +79,7 @@ class UsersTable
                 ->url(fn (User $record) => $record->store
                     ? StoreResource::getUrl('view', ['record' => $record->store])
                     : null)
-                ->visible(fn (User $record) => $record->is_seller),
+                ->visible(fn (User $record): bool => $record->role === 'vendor' && (bool) $record->store),
         ])
         ->bulkActions([]);
 

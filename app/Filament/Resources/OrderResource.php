@@ -25,7 +25,7 @@ class OrderResource extends Resource
 
     protected static ?string $navigationLabel = 'الطلبات';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'المتاجر';
+    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
 
     public static function canViewAny(): bool
     {

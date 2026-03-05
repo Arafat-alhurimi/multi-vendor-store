@@ -25,6 +25,10 @@
                 this.progress = 5
             }
 
+            if (this.uploading && this.done) {
+                this.scheduleAutoHide()
+            }
+
             window.addEventListener('livewire-upload-start', () => {
                 this.clearHideTimer()
                 this.uploading = true
@@ -108,20 +112,7 @@
                 this.currentStatus = 'تم الرفع بنجاح'
                 this.pushLog(this.currentStatus)
                 this.persist()
-
-                this.clearHideTimer()
-                this.hideTimer = setTimeout(() => {
-                    if (this.expanded) {
-                        return
-                    }
-
-                    this.uploading = false
-                    this.done = false
-                    this.progress = 0
-                    this.totalFiles = 0
-                    this.completedFiles = 0
-                    this.persist()
-                }, 10000)
+                this.scheduleAutoHide()
             })
 
             window.addEventListener('s3-upload-finish', () => {
@@ -131,21 +122,26 @@
                 this.currentStatus = 'تم الرفع بنجاح'
                 this.pushLog(this.currentStatus)
                 this.persist()
-
-                this.clearHideTimer()
-                this.hideTimer = setTimeout(() => {
-                    if (this.expanded) {
-                        return
-                    }
-
-                    this.uploading = false
-                    this.done = false
-                    this.progress = 0
-                    this.totalFiles = 0
-                    this.completedFiles = 0
-                    this.persist()
-                }, 10000)
+                this.scheduleAutoHide()
             })
+        },
+        scheduleAutoHide() {
+            this.clearHideTimer()
+            this.hideTimer = setTimeout(() => {
+                if (this.expanded) {
+                    this.scheduleAutoHide()
+                    return
+                }
+
+                this.uploading = false
+                this.done = false
+                this.progress = 0
+                this.totalFiles = 0
+                this.completedFiles = 0
+                this.currentStatus = ''
+                this.logs = []
+                this.persist()
+            }, 10000)
         },
         pushLog(text) {
             this.logs.push(text)

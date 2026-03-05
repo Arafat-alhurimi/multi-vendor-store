@@ -17,7 +17,7 @@ class SubcategoryForm
             ->components([
                 Select::make('category_id')
                     ->relationship('category', 'name_ar')
-                    ->label('القسم الرئيسي')
+                    ->label('الفئة الرئيسية')
                     ->required(),
                 TextInput::make('name_ar')
                     ->label('الاسم (عربي)')

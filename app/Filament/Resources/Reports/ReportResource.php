@@ -18,7 +18,7 @@ class ReportResource extends Resource
 
     protected static ?string $navigationLabel = 'البلاغات';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'المتاجر';
+    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
 
     protected static ?int $navigationSort = 5;
 

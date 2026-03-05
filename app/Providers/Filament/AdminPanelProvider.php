@@ -2,11 +2,12 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Dashboard;
+use App\Http\Middleware\SetFilamentArabicLocale;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
-use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -48,6 +49,7 @@ class AdminPanelProvider extends PanelProvider
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
                 AuthenticateSession::class,
+                SetFilamentArabicLocale::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
                 SubstituteBindings::class,
@@ -58,6 +60,10 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->databaseNotifications(livewireComponent: \App\Livewire\Filament\DatabaseNotifications::class)
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.force-rtl'),
+            )
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.global-upload-progress'),

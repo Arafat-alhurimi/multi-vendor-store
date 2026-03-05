@@ -6,8 +6,9 @@ use App\Filament\Resources\Stores\Pages\CreateStore;
 use App\Filament\Resources\Stores\Pages\EditStore;
 use App\Filament\Resources\Stores\Pages\ListStores;
 use App\Filament\Resources\Stores\Pages\ViewStore;
-use App\Filament\Resources\Stores\RelationManagers\CommentsRelationManager;
-use App\Filament\Resources\Stores\RelationManagers\MediaRelationManager;
+use App\Filament\Resources\Stores\RelationManagers\JoinedPromotionsRelationManager;
+use App\Filament\Resources\Stores\RelationManagers\OrdersRelationManager;
+use App\Filament\Resources\Stores\RelationManagers\OwnPromotionsRelationManager;
 use App\Filament\Resources\Stores\RelationManagers\ProductsRelationManager;
 use App\Filament\Resources\Stores\Schemas\StoreForm;
 use App\Filament\Resources\Stores\Tables\StoresTable;
@@ -43,8 +44,9 @@ class StoreResource extends Resource
     {
         return [
             ProductsRelationManager::class,
-            CommentsRelationManager::class,
-            MediaRelationManager::class,
+            OwnPromotionsRelationManager::class,
+            JoinedPromotionsRelationManager::class,
+            OrdersRelationManager::class,
         ];
     }
 

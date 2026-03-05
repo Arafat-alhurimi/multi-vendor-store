@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Promotions\Pages;
 
 use App\Filament\Resources\Promotions\PromotionResource;
+use App\Filament\Resources\Promotions\Widgets\PromotionsStatsOverview;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Notifications\Notification;
@@ -33,6 +34,13 @@ class ListPromotions extends ListRecords
                         ->send();
                 }),
             CreateAction::make(),
+        ];
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            PromotionsStatsOverview::class,
         ];
     }
 }

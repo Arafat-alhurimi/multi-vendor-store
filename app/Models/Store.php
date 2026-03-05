@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOneThrough;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Support\Facades\Storage;
@@ -80,6 +81,35 @@ class Store extends Model
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
+    }
+
+    public function orders(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            Order::class,
+            Product::class,
+            'store_id',
+            'product_id',
+            'id',
+            'id'
+        );
+    }
+
+    public function cartItems(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            CartItem::class,
+            Product::class,
+            'store_id',
+            'product_id',
+            'id',
+            'id'
+        );
+    }
+
+    public function ownPromotions(): HasMany
+    {
+        return $this->hasMany(Promotion::class);
     }
 
     public function media(): MorphMany

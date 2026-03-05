@@ -7,11 +7,17 @@ use App\Filament\Resources\Promotions\Pages\EditPromotion;
 use App\Filament\Resources\Promotions\Pages\ListPromotions;
 use App\Filament\Resources\Promotions\Pages\ViewPromotion;
 use App\Filament\Resources\Promotions\RelationManagers\PromotionItemsRelationManager;
+use App\Models\Category;
+use App\Models\Product;
 use App\Models\Promotion;
+use App\Models\PromotionItem;
+use App\Models\Store;
+use App\Models\Subcategory;
 use BackedEnum;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Hidden;
@@ -23,8 +29,12 @@ use Filament\Tables\Columns\BadgeColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class PromotionResource extends Resource
 {
@@ -34,7 +44,7 @@ class PromotionResource extends Resource
 
     protected static ?string $navigationLabel = 'الحملات';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'المتاجر';
+    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
 
     public static function form(Schema $schema): Schema
     {
@@ -98,7 +108,20 @@ class PromotionResource extends Resource
                     ->searchable(),
 
                 BadgeColumn::make('level')
-                    ->label('المستوى'),
+                    ->label('نوع العرض')
+                    ->formatStateUsing(fn (string $state): string => $state === 'app' ? 'عرض تطبيق' : 'عرض متجر')
+                    ->colors([
+                        'primary' => 'app',
+                        'success' => 'store',
+                    ]),
+
+                TextColumn::make('stores_in_offer_count')
+                    ->label('عدد المتاجر في العرض')
+                    ->state(fn (Promotion $record): int => static::resolvePromotionTargetStoreIds($record)->count()),
+
+                TextColumn::make('products_in_offer_count')
+                    ->label('عدد المنتجات بالكامل في العرض')
+                    ->state(fn (Promotion $record): int => static::resolvePromotionTargetProductIds($record)->count()),
 
                 TextColumn::make('discount_type')
                     ->label('نوع الخصم'),
@@ -120,6 +143,87 @@ class PromotionResource extends Resource
                 IconColumn::make('is_active')
                     ->label('نشط')
                     ->boolean(),
+            ])
+            ->filters([
+                SelectFilter::make('level')
+                    ->label('نوع العرض')
+                    ->options([
+                        'app' => 'عروض التطبيق',
+                        'store' => 'عروض المتاجر',
+                    ]),
+                TernaryFilter::make('is_active')
+                    ->label('الحالة')
+                    ->trueLabel('نشط')
+                    ->falseLabel('غير نشط')
+                    ->placeholder('الكل'),
+                TernaryFilter::make('currently_running')
+                    ->label('ساري الآن')
+                    ->trueLabel('نعم')
+                    ->falseLabel('لا')
+                    ->placeholder('الكل')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query
+                            ->where('is_active', true)
+                            ->where(function (Builder $inner): void {
+                                $inner->whereNull('starts_at')->orWhere('starts_at', '<=', now());
+                            })
+                            ->where(function (Builder $inner): void {
+                                $inner->whereNull('ends_at')->orWhere('ends_at', '>=', now());
+                            }),
+                        false: fn (Builder $query): Builder => $query->where(function (Builder $outer): void {
+                            $outer
+                                ->where('is_active', false)
+                                ->orWhere('starts_at', '>', now())
+                                ->orWhere('ends_at', '<', now());
+                        }),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
+                TernaryFilter::make('has_items')
+                    ->label('له عناصر مستهدفة')
+                    ->trueLabel('نعم')
+                    ->falseLabel('لا')
+                    ->placeholder('الكل')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereHas('items'),
+                        false: fn (Builder $query): Builder => $query->whereDoesntHave('items'),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
+                TernaryFilter::make('has_store_scope')
+                    ->label('مرتبط بمتجر')
+                    ->trueLabel('نعم')
+                    ->falseLabel('لا')
+                    ->placeholder('الكل')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereNotNull('store_id'),
+                        false: fn (Builder $query): Builder => $query->whereNull('store_id'),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
+                SelectFilter::make('store_id')
+                    ->label('متجر العرض (إن وجد)')
+                    ->options(fn (): array => Store::query()->orderBy('name')->pluck('name', 'id')->toArray())
+                    ->searchable(),
+                Filter::make('starts_between')
+                    ->label('تاريخ البدء')
+                    ->form([
+                        DatePicker::make('from')->label('من'),
+                        DatePicker::make('until')->label('إلى'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['from'] ?? null, fn (Builder $q, $date): Builder => $q->whereDate('starts_at', '>=', $date))
+                            ->when($data['until'] ?? null, fn (Builder $q, $date): Builder => $q->whereDate('starts_at', '<=', $date));
+                    }),
+                Filter::make('ends_between')
+                    ->label('تاريخ الانتهاء')
+                    ->form([
+                        DatePicker::make('from')->label('من'),
+                        DatePicker::make('until')->label('إلى'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['from'] ?? null, fn (Builder $q, $date): Builder => $q->whereDate('ends_at', '>=', $date))
+                            ->when($data['until'] ?? null, fn (Builder $q, $date): Builder => $q->whereDate('ends_at', '<=', $date));
+                    }),
             ])
             ->defaultSort('starts_at', 'desc')
             ->recordUrl(fn ($record) => static::getUrl('view', ['record' => $record]))
@@ -149,6 +253,92 @@ class PromotionResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->where('level', 'app');
+        return parent::getEloquentQuery();
+    }
+
+    private static function resolvePromotionTargetProductIds(Promotion $promotion): Collection
+    {
+        $items = PromotionItem::query()
+            ->where('promotion_id', $promotion->id)
+            ->approved()
+            ->get(['promotable_type', 'promotable_id', 'store_id']);
+
+        if ($items->isEmpty()) {
+            return collect();
+        }
+
+        $productIds = collect();
+
+        foreach ($items as $item) {
+            if ($item->promotable_type === Product::class) {
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->whereKey($item->promotable_id)
+                        ->when($item->store_id, fn (Builder $query): Builder => $query->where('store_id', $item->store_id))
+                        ->pluck('id')
+                );
+
+                continue;
+            }
+
+            if ($item->promotable_type === Store::class) {
+                $productIds = $productIds->merge(
+                    Product::query()->where('store_id', $item->promotable_id)->pluck('id')
+                );
+
+                continue;
+            }
+
+            if ($item->promotable_type === Subcategory::class) {
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->where('subcategory_id', $item->promotable_id)
+                        ->when($item->store_id, fn (Builder $query): Builder => $query->where('store_id', $item->store_id))
+                        ->pluck('id')
+                );
+
+                continue;
+            }
+
+            if ($item->promotable_type === Category::class) {
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->whereHas('subcategory', fn (Builder $query): Builder => $query->where('category_id', $item->promotable_id))
+                        ->when($item->store_id, fn (Builder $query): Builder => $query->where('store_id', $item->store_id))
+                        ->pluck('id')
+                );
+            }
+        }
+
+        return $productIds->filter()->unique()->values();
+    }
+
+    private static function resolvePromotionTargetStoreIds(Promotion $promotion): Collection
+    {
+        $items = PromotionItem::query()
+            ->where('promotion_id', $promotion->id)
+            ->approved()
+            ->get(['promotable_type', 'promotable_id', 'store_id']);
+
+        if ($items->isEmpty()) {
+            return collect();
+        }
+
+        $directStoreIds = $items
+            ->filter(fn (PromotionItem $item): bool => $item->promotable_type === Store::class)
+            ->pluck('promotable_id');
+
+        $explicitStoreIds = $items->pluck('store_id')->filter();
+
+        $storeIdsFromProducts = Product::query()
+            ->whereIn('id', static::resolvePromotionTargetProductIds($promotion)->all())
+            ->pluck('store_id');
+
+        return $directStoreIds
+            ->merge($explicitStoreIds)
+            ->merge($storeIdsFromProducts)
+            ->filter()
+            ->unique()
+            ->values();
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Http\Middleware\SetFilamentArabicLocale;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -46,6 +47,7 @@ class NPanelProvider extends PanelProvider
                 AddQueuedCookiesToResponse::class,
                 StartSession::class,
                 AuthenticateSession::class,
+                SetFilamentArabicLocale::class,
                 ShareErrorsFromSession::class,
                 VerifyCsrfToken::class,
                 SubstituteBindings::class,
@@ -55,6 +57,10 @@ class NPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])->databaseNotifications(livewireComponent: \App\Livewire\Filament\DatabaseNotifications::class)
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.force-rtl'),
+            )
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.global-upload-progress'),

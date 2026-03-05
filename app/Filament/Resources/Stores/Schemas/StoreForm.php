@@ -83,7 +83,7 @@ class StoreForm
                             ->label('العنوان'),
                         Hidden::make('logo'),
                         Select::make('categories')
-                            ->label('الأقسام')
+                            ->label('الفئات الرئيسية')
                             ->relationship('categories', 'name_ar')
                             ->multiple()
                             ->preload()
