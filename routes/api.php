@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\VendorAdSubscriptionController;
 use App\Http\Controllers\Api\VendorFinancialDetailController;
 use App\Http\Controllers\Api\VendorPromotionController;
 use App\Http\Controllers\Api\VendorStorePromotionController;
+use App\Http\Controllers\Api\VendorOnboardingController;
 
 Route::get('/user', function (Request $request) {
     return $request->user();
@@ -34,6 +35,9 @@ Route::get('/user', function (Request $request) {
 
 // مرحلة إرسال البيانات (قبل الـ OTP)
 Route::post('/register', [AuthController::class, 'register']);
+Route::post('/vendor/register-complete', [VendorOnboardingController::class, 'register']);
+Route::post('/vendor/onboarding/presign', [VendorOnboardingController::class, 'presign']);
+Route::post('/vendor/onboarding/presign-batch', [VendorOnboardingController::class, 'presignBatch']);
 
 // تسجيل الدخول بالهاتف وكلمة المرور
 Route::post('/login', [AuthController::class, 'login']);

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Users\Pages;
 use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\Stores\StoreResource;
 use App\Filament\Resources\Users\UserResource;
+use App\Filament\Resources\VendorOnboardingResource;
 use App\Models\Comment;
 use App\Models\User;
 use Filament\Actions\Action;
@@ -29,16 +30,71 @@ class ViewUser extends ViewRecord
                 ->icon('heroicon-o-building-storefront')
                 ->color('primary')
                 ->visible(fn (): bool => $this->getRecord()->role === 'vendor' && ! $this->getRecord()->store)
-                ->url(fn (): string => StoreResource::getUrl('create', ['user_id' => $this->getRecord()->id])),
+                ->url(fn (): string => VendorOnboardingResource::getUrl('create')),
+            Action::make('approveVendor')
+                ->label('موافقة وتفعيل البائع')
+                ->icon('heroicon-o-check-badge')
+                ->color('success')
+                ->visible(fn (): bool =>
+                    $this->getRecord()->role === 'vendor'
+                    && ! $this->getRecord()->is_active
+                    && filled($this->getRecord()->otp_verified_at)
+                    && (bool) $this->getRecord()->store
+                )
+                ->action(function (): void {
+                    $this->approveVendorAccount();
+                })
+                ->requiresConfirmation(),
             Action::make('toggleActive')
                 ->label(fn (): string => $this->getRecord()->is_active ? 'إلغاء التفعيل' : 'تفعيل الحساب')
                 ->color(fn (): string => $this->getRecord()->is_active ? 'danger' : 'success')
                 ->icon(fn (): string => $this->getRecord()->is_active ? 'heroicon-o-x-circle' : 'heroicon-o-check-circle')
+                ->visible(fn (): bool => $this->getRecord()->role !== 'vendor' || $this->getRecord()->is_active)
                 ->action(function (): void {
                     $this->toggleActivation();
                 })
                 ->requiresConfirmation(),
         ];
+    }
+
+    protected function approveVendorAccount(): void
+    {
+        $record = $this->getRecord();
+
+        if (! $record instanceof User || $record->role !== 'vendor') {
+            return;
+        }
+
+        if (! $record->otp_verified_at) {
+            Notification::make()
+                ->title('لا يمكن الموافقة')
+                ->body('يجب أن يتم التحقق من OTP أولاً.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $store = $record->store;
+
+        if (! $store) {
+            Notification::make()
+                ->title('لا يمكن الموافقة')
+                ->body('لا يوجد متجر مرتبط بهذا البائع.')
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $record->update(['is_active' => true]);
+        $store->update(['is_active' => true]);
+
+        Notification::make()
+            ->title('تمت الموافقة')
+            ->body('تم تفعيل حساب البائع والمتجر بنجاح.')
+            ->success()
+            ->send();
     }
 
     protected function toggleActivation(): void
@@ -50,6 +106,10 @@ class ViewUser extends ViewRecord
         }
 
         if ($record->is_active) {
+            if ($record->role === 'vendor' && $record->store) {
+                $record->store->update(['is_active' => false]);
+            }
+
             $record->update(['is_active' => false]);
 
             Notification::make()
@@ -84,16 +144,6 @@ class ViewUser extends ViewRecord
                 return;
             }
 
-            if (! $store->logo) {
-                Notification::make()
-                    ->title('لا يمكن التفعيل')
-                    ->body('يجب إضافة صورة/شعار المتجر قبل التفعيل.')
-                    ->danger()
-                    ->send();
-
-                return;
-            }
-
             $store->update(['is_active' => true]);
         }
 
@@ -120,6 +170,48 @@ class ViewUser extends ViewRecord
                 TextEntry::make('is_active')
                     ->label('الحالة')
                     ->formatStateUsing(fn (bool $state): string => $state ? 'نشط' : 'غير نشط'),
+                TextEntry::make('approval_status')
+                    ->label('حالة الموافقة')
+                    ->visible(fn (?User $record): bool => $record?->role === 'vendor')
+                    ->badge()
+                    ->state(function (?User $record): string {
+                        if (! $record) {
+                            return '-';
+                        }
+
+                        if ($record->is_active) {
+                            return 'تمت الموافقة';
+                        }
+
+                        if (! filled($record->otp_verified_at)) {
+                            return 'بانتظار التحقق من OTP';
+                        }
+
+                        if (! $record->store) {
+                            return 'لم ينشئ متجر بعد';
+                        }
+
+                        return 'جاهز للموافقة';
+                    })
+                    ->color(function (?User $record): string {
+                        if (! $record) {
+                            return 'gray';
+                        }
+
+                        if ($record->is_active) {
+                            return 'success';
+                        }
+
+                        if (! filled($record->otp_verified_at)) {
+                            return 'warning';
+                        }
+
+                        if (! $record->store) {
+                            return 'gray';
+                        }
+
+                        return 'warning';
+                    }),
                 TextEntry::make('vendorFinancialDetail.kuraimi_account_number')
                     ->label('رقم حساب الكريمي')
                     ->visible(fn (?User $record): bool => $record?->role !== 'customer')
@@ -134,14 +226,6 @@ class ViewUser extends ViewRecord
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.jeeb_name')
                     ->label('اسم حساب جيب')
-                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
-                TextEntry::make('vendorFinancialDetail.card_image')
-                    ->label('صورة البطاقة (أمام)')
-                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
-                TextEntry::make('vendorFinancialDetail.back_card_image')
-                    ->label('صورة البطاقة (خلف)')
                     ->visible(fn (?User $record): bool => $record?->role !== 'customer')
                     ->placeholder('-'),
                 TextEntry::make('vendorFinancialDetail.total_commission_owed')

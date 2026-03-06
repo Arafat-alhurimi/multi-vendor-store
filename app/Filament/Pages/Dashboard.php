@@ -4,8 +4,8 @@ namespace App\Filament\Pages;
 
 use App\Filament\Resources\OrderResource;
 use App\Filament\Resources\Products\ProductResource;
-use App\Filament\Resources\Stores\StoreResource;
 use App\Filament\Resources\Users\UserResource;
+use App\Filament\Resources\VendorOnboardingResource;
 use App\Filament\Widgets\CommerceStatsOverview;
 use App\Filament\Widgets\LowStockAlerts;
 use App\Filament\Widgets\OrderStatusPieChart;
@@ -22,10 +22,10 @@ class Dashboard extends BaseDashboard
     {
         return [
             Action::make('createStore')
-                ->label('إضافة متجر جديد')
+                ->label('إنشاء متجر جديد')
                 ->icon('heroicon-o-building-storefront')
                 ->color('success')
-                ->url(StoreResource::getUrl('create')),
+                ->url(VendorOnboardingResource::getUrl('create')),
             Action::make('createUser')
                 ->label('إضافة مستخدم')
                 ->icon('heroicon-o-user-plus')

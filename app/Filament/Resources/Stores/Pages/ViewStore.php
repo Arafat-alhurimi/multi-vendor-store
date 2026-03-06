@@ -3,9 +3,11 @@
 namespace App\Filament\Resources\Stores\Pages;
 
 use App\Filament\Resources\Stores\StoreResource;
+use Filament\Actions\Action;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
@@ -18,7 +20,116 @@ class ViewStore extends ViewRecord
 
     protected function getHeaderActions(): array
     {
-        return [];
+        return [
+            Action::make('toggleStoreActive')
+                ->label(fn (): string => $this->getRecord()->is_active ? 'إلغاء تفعيل المتجر' : 'تفعيل المتجر')
+                ->icon(fn (): string => $this->getRecord()->is_active ? 'heroicon-o-x-circle' : 'heroicon-o-check-circle')
+                ->color(fn (): string => $this->getRecord()->is_active ? 'danger' : 'success')
+                ->requiresConfirmation()
+                ->action(function (): void {
+                    $store = $this->getRecord();
+
+                    if (! $store->is_active) {
+                        $user = $store->user;
+
+                        if (! $user || ! $user->is_active) {
+                            Notification::make()
+                                ->title('لا يمكن التفعيل')
+                                ->body('لا يمكن تفعيل المتجر لأن حساب البائع غير مفعل.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $store->update(['is_active' => true]);
+
+                        Notification::make()
+                            ->title('تم تفعيل المتجر')
+                            ->success()
+                            ->send();
+
+                        return;
+                    }
+
+                    $store->update(['is_active' => false]);
+
+                    Notification::make()
+                        ->title('تم إلغاء تفعيل المتجر')
+                        ->warning()
+                        ->send();
+                }),
+            Action::make('approveVendor')
+                ->label('موافقة وتفعيل البائع والمتجر')
+                ->icon('heroicon-o-check-badge')
+                ->color('success')
+                ->visible(fn (): bool => $this->canApprove())
+                ->requiresConfirmation()
+                ->action(function (): void {
+                    $this->approveVendorAndStore();
+                }),
+        ];
+    }
+
+    protected function canApprove(): bool
+    {
+        $store = $this->getRecord();
+        $user = $store->user;
+
+        return (bool) $user
+            && $user->role === 'vendor'
+            && ! $user->is_active
+            && filled($user->otp_verified_at)
+            && ! $store->is_active;
+    }
+
+    protected function approvalStatusLabel(): string
+    {
+        $store = $this->getRecord();
+        $user = $store->user;
+
+        if (! $user) {
+            return 'لا يوجد بائع مرتبط بالمتجر';
+        }
+
+        if ($user->is_active && $store->is_active) {
+            return 'تمت الموافقة والتفعيل';
+        }
+
+        if (! filled($user->otp_verified_at)) {
+            return 'بانتظار التحقق من OTP';
+        }
+
+        if (! $user->is_active) {
+            return 'جاهز للموافقة';
+        }
+
+        return 'حساب البائع مفعل والمتجر غير مفعل';
+    }
+
+    protected function approveVendorAndStore(): void
+    {
+        if (! $this->canApprove()) {
+            Notification::make()
+                ->title('لا يمكن الموافقة')
+                ->body($this->approvalStatusLabel())
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        $store = $this->getRecord();
+        $user = $store->user;
+
+        $user?->update(['is_active' => true]);
+        $store->update(['is_active' => true]);
+
+        Notification::make()
+            ->title('تمت الموافقة')
+            ->body('تم تفعيل حساب البائع والمتجر بنجاح.')
+            ->success()
+            ->send();
     }
 
     public function infolist(Schema $schema): Schema
@@ -41,6 +152,32 @@ class ViewStore extends ViewRecord
                         TextEntry::make('user.name')
                             ->label('البائع')
                             ->placeholder('-'),
+                        TextEntry::make('user.phone')
+                            ->label('هاتف البائع')
+                            ->placeholder('-'),
+                        TextEntry::make('user.email')
+                            ->label('بريد البائع')
+                            ->placeholder('-'),
+                        TextEntry::make('user.otp_verified_at')
+                            ->label('توثيق OTP')
+                            ->formatStateUsing(fn ($state): string => filled($state) ? 'موثّق' : 'غير موثّق')
+                            ->badge()
+                            ->color(fn ($state): string => filled($state) ? 'success' : 'warning')
+                            ->placeholder('-'),
+                        TextEntry::make('user.created_at')
+                            ->label('تاريخ انضمام البائع')
+                            ->dateTime('Y-m-d h:i A')
+                            ->placeholder('-'),
+                        TextEntry::make('approval_status')
+                            ->label('حالة الموافقة')
+                            ->badge()
+                            ->state(fn (): string => $this->approvalStatusLabel())
+                            ->color(fn (): string => match ($this->approvalStatusLabel()) {
+                                'تمت الموافقة والتفعيل' => 'success',
+                                'جاهز للموافقة' => 'warning',
+                                'بانتظار التحقق من OTP' => 'warning',
+                                default => 'gray',
+                            }),
                         TextEntry::make('city')
                             ->label('المدينة')
                             ->placeholder('-'),

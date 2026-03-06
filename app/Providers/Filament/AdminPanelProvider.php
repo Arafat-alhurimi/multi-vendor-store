@@ -3,11 +3,14 @@
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Dashboard;
+use App\Filament\Resources\Users\UserResource;
 use App\Http\Middleware\SetFilamentArabicLocale;
+use App\Models\User;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
@@ -43,6 +46,17 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 AccountWidget::class,
                 FilamentInfoWidget::class,
+            ])
+            ->navigationItems([
+                NavigationItem::make('طلبات إنشاء متاجر')
+                    ->icon('heroicon-o-clock')
+                    ->sort(3)
+                    ->url(fn (): string => UserResource::getUrl('pending'))
+                    ->isActiveWhen(fn (): bool => request()->routeIs('filament.admin.resources.users.pending'))
+                    ->badge(fn (): ?string => ($count = User::query()
+                        ->where('role', 'vendor')
+                        ->where('is_active', false)
+                        ->count()) > 0 ? (string) $count : null, color: 'warning'),
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -19,8 +19,8 @@ class VendorFinancialDetailController extends Controller
 
         $data = $request->validate([
             'user_id' => 'nullable|integer|exists:users,id',
-            'card_image' => 'required|string|max:2048',
-            'back_card_image' => 'required|string|max:2048',
+            'card_image' => 'nullable|string|max:2048',
+            'back_card_image' => 'nullable|string|max:2048',
             'kuraimi_account_number' => 'nullable|string|max:50',
             'kuraimi_account_name' => 'nullable|string|max:255',
             'jeeb_id' => 'nullable|string|max:100',
@@ -46,6 +46,14 @@ class VendorFinancialDetailController extends Controller
 
         if ($authUser->role !== 'admin') {
             unset($data['total_commission_owed']);
+        }
+
+        if (! array_key_exists('card_image', $data) || $data['card_image'] === null) {
+            $data['card_image'] = '';
+        }
+
+        if (! array_key_exists('back_card_image', $data) || $data['back_card_image'] === null) {
+            $data['back_card_image'] = '';
         }
 
         $financialDetail = VendorFinancialDetail::query()->updateOrCreate(
