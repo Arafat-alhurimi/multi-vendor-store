@@ -43,6 +43,37 @@ Route::post('/admin/notifications/delete/{id}', function ($id) {
 });
 
 Route::middleware(['web', 'auth'])->group(function () {
+    Route::post('/admin/presence/ping', function () {
+        $user = request()->user();
+
+        if (! $user || $user->role !== 'admin') {
+            return response()->json(['ok' => false], 403);
+        }
+
+        $cacheKey = 'filament_dashboard_active_admins';
+        $ttlSeconds = 120;
+        $nowTs = now()->timestamp;
+
+        $active = \Illuminate\Support\Facades\Cache::get($cacheKey, []);
+
+        if (! is_array($active)) {
+            $active = [];
+        }
+
+        // Keep active admins only within the recent heartbeat window.
+        $active = array_filter($active, fn (array $item): bool => (($item['last_seen'] ?? 0) >= ($nowTs - $ttlSeconds)));
+
+        $active[(string) $user->id] = [
+            'id' => (int) $user->id,
+            'name' => (string) $user->name,
+            'last_seen' => $nowTs,
+        ];
+
+        \Illuminate\Support\Facades\Cache::put($cacheKey, $active, now()->addMinutes(10));
+
+        return response()->json(['ok' => true]);
+    })->name('admin.presence.ping');
+
     Route::post('/s3-direct/sign-put', [S3DirectUploadController::class, 'signPut'])
         ->name('s3-direct.sign-put');
     Route::post('/s3-direct/attach-uploaded', [S3DirectUploadController::class, 'attachUploaded'])

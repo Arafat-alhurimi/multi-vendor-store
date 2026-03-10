@@ -6,6 +6,7 @@ use App\Filament\Resources\OrderResource;
 use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Filament\Resources\VendorOnboardingResource;
+use App\Filament\Widgets\AdminsOnlineNow;
 use App\Filament\Widgets\ActiveEntitiesStatsOverview;
 use App\Filament\Widgets\CommerceStatsOverview;
 use App\Filament\Widgets\CustomerStoreGrowthChart;
@@ -28,11 +29,11 @@ class Dashboard extends BaseDashboard
                 ->icon('heroicon-o-building-storefront')
                 ->color('success')
                 ->url(VendorOnboardingResource::getUrl('create')),
-            Action::make('createUser')
-                ->label('إضافة مستخدم')
+            Action::make('createCustomer')
+                ->label('إضافة عميل')
                 ->icon('heroicon-o-user-plus')
                 ->color('info')
-                ->url(UserResource::getUrl('create')),
+                ->url(UserResource::getUrl('create', ['role' => 'customer'])),
             Action::make('latestOrders')
                 ->label('مراجعة آخر الطلبات')
                 ->icon('heroicon-o-clipboard-document-list')
@@ -52,6 +53,7 @@ class Dashboard extends BaseDashboard
     public function getWidgets(): array
     {
         return [
+            AdminsOnlineNow::class,
             ActiveEntitiesStatsOverview::class,
             CustomerStoreGrowthChart::class,
             CommerceStatsOverview::class,
