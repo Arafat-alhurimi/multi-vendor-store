@@ -60,16 +60,21 @@ class AdminsOnlineNow extends Widget
 
         $connectedCount = count(array_filter($admins, fn (array $admin): bool => (bool) $admin['is_online']));
 
-        // Persist only currently active admins in cache.
+        // Persist only currently active admins in cache, while preserving real last_seen values.
         $cachePayload = collect($admins)
             ->filter(fn (array $admin): bool => (bool) $admin['is_online'])
-            ->mapWithKeys(fn (array $admin): array => [
-                (string) $admin['id'] => [
-                    'id' => $admin['id'],
-                    'name' => $admin['name'],
-                    'last_seen' => $nowTs,
-                ],
-            ])
+            ->mapWithKeys(function (array $admin) use ($activeById): array {
+                $id = (int) $admin['id'];
+                $cached = (array) ($activeById->get($id) ?? []);
+
+                return [
+                    (string) $id => [
+                        'id' => $id,
+                        'name' => $admin['name'],
+                        'last_seen' => (int) ($cached['last_seen'] ?? 0),
+                    ],
+                ];
+            })
             ->all();
 
         Cache::put($cacheKey, $cachePayload, now()->addMinutes(10));

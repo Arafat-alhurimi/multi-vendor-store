@@ -74,6 +74,27 @@ Route::middleware(['web', 'auth'])->group(function () {
         return response()->json(['ok' => true]);
     })->name('admin.presence.ping');
 
+    Route::post('/admin/presence/offline', function () {
+        $user = request()->user();
+
+        if (! $user || $user->role !== 'admin') {
+            return response()->json(['ok' => false], 403);
+        }
+
+        $cacheKey = 'filament_dashboard_active_admins';
+        $active = \Illuminate\Support\Facades\Cache::get($cacheKey, []);
+
+        if (! is_array($active)) {
+            $active = [];
+        }
+
+        unset($active[(string) $user->id]);
+
+        \Illuminate\Support\Facades\Cache::put($cacheKey, $active, now()->addMinutes(10));
+
+        return response()->json(['ok' => true]);
+    })->name('admin.presence.offline');
+
     Route::post('/s3-direct/sign-put', [S3DirectUploadController::class, 'signPut'])
         ->name('s3-direct.sign-put');
     Route::post('/s3-direct/attach-uploaded', [S3DirectUploadController::class, 'attachUploaded'])
