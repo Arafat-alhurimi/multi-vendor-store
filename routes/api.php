@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductVariantResolverController;
 use App\Http\Controllers\Api\ProductVariantController;
 use App\Http\Controllers\Api\ProductVariantSuggestionController;
+use App\Http\Controllers\Api\ProductSetupController;
 use App\Http\Controllers\Api\RatingController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\StoreController;
@@ -56,6 +57,7 @@ Route::post('/products/{product}/resolve-variant', [ProductVariantResolverContro
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/stores', [StoreController::class, 'store']);
     Route::post('/products', [ProductController::class, 'store']);
+    Route::post('/products/setup', [ProductSetupController::class, 'store']);
     Route::post('/products/{product}/attributes', [AttributeController::class, 'store']);
     Route::get('/products/{product}/suggest-variants', [ProductVariantSuggestionController::class, 'suggest']);
     Route::post('/products/{product}/variants', [ProductVariantController::class, 'store']);
@@ -64,6 +66,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/upload/presign-batch', [UploadController::class, 'presignBatch']);
     Route::post('/vendor-financial-details', [VendorFinancialDetailController::class, 'upsert']);
     Route::post('/vendor/subscribe', [VendorAdSubscriptionController::class, 'store']);
+    Route::post('/vendor/subscriptions/{id}/renew', [VendorAdSubscriptionController::class, 'requestRenewal']);
     Route::post('/vendor/ads', [VendorAdController::class, 'store']);
     Route::post('/vendor/discounts', [VendorDiscountController::class, 'upsert']);
     Route::post('/vendor/promotions/join', [VendorPromotionController::class, 'join']);

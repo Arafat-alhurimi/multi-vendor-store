@@ -6,7 +6,9 @@ use App\Filament\Resources\OrderResource;
 use App\Filament\Resources\Products\ProductResource;
 use App\Filament\Resources\Users\UserResource;
 use App\Filament\Resources\VendorOnboardingResource;
+use App\Filament\Widgets\ActiveEntitiesStatsOverview;
 use App\Filament\Widgets\CommerceStatsOverview;
+use App\Filament\Widgets\CustomerStoreGrowthChart;
 use App\Filament\Widgets\LowStockAlerts;
 use App\Filament\Widgets\OrderStatusPieChart;
 use App\Filament\Widgets\SalesLast7DaysChart;
@@ -50,6 +52,8 @@ class Dashboard extends BaseDashboard
     public function getWidgets(): array
     {
         return [
+            ActiveEntitiesStatsOverview::class,
+            CustomerStoreGrowthChart::class,
             CommerceStatsOverview::class,
             SalesLast7DaysChart::class,
             OrderStatusPieChart::class,

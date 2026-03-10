@@ -3,6 +3,13 @@
 namespace App\Filament\Resources\Products\Pages;
 
 use App\Filament\Resources\Products\ProductResource;
+use App\Models\Comment;
+use App\Models\Category;
+use App\Models\Product;
+use App\Models\PromotionItem;
+use App\Models\Store;
+use App\Models\Subcategory;
+use App\Services\PriceService;
 use Filament\Actions;
 use Filament\Infolists\Components\ImageEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -12,10 +19,13 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Tabs;
 use Filament\Schemas\Components\Tabs\Tab;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Collection;
 
 class ViewProduct extends ViewRecord
 {
     protected static string $resource = ProductResource::class;
+
+    protected ?array $appliedPromotionsCache = null;
 
     protected function getHeaderActions(): array
     {
@@ -43,8 +53,13 @@ class ViewProduct extends ViewRecord
                 Section::make('بيانات المنتج')
                     ->schema([
                         TextEntry::make('store.name')->label('المتجر')->placeholder('-'),
-                        TextEntry::make('subcategory.category.name_ar')->label('الفئة الرئيسية')->placeholder('-'),
-                        TextEntry::make('subcategory.name_ar')->label('القسم الفرعي')->placeholder('-'),
+                        TextEntry::make('section_path')
+                            ->label('القسم')
+                            ->state(fn (): string => collect([
+                                $this->getRecord()->subcategory?->category?->name_ar,
+                                $this->getRecord()->subcategory?->name_ar,
+                            ])->filter()->implode('>') ?: '-')
+                            ->placeholder('-'),
                         TextEntry::make('base_price')->label('السعر الأساسي')->money('SAR'),
                         TextEntry::make('final_price')
                             ->label('السعر بعد العرض')
@@ -196,7 +211,7 @@ class ViewProduct extends ViewRecord
                             ->columnSpanFull(),
                     ])
                     ->columnSpanFull(),
-                Tabs::make('التفاصيل المرتبطة')
+                Tabs::make('التعليقات والوسائط')
                     ->tabs([
                         Tab::make('التعليقات')
                             ->badge(fn (): int => (int) $this->getRecord()->comments()->count())
@@ -206,7 +221,29 @@ class ViewProduct extends ViewRecord
                                     ->placeholder('لا توجد تعليقات')
                                     ->schema([
                                         TextEntry::make('user.name')->label('المستخدم')->placeholder('-'),
-                                        TextEntry::make('body')->label('التعليق')->placeholder('-')->columnSpanFull(),
+                                        TextEntry::make('body')
+                                            ->label('التعليق')
+                                            ->placeholder('-')
+                                            ->columnSpanFull()
+                                            ->suffixAction(
+                                                Actions\Action::make('deleteProductComment')
+                                                    ->icon('heroicon-o-x-mark')
+                                                    ->tooltip('حذف التعليق')
+                                                    ->color('danger')
+                                                    ->requiresConfirmation()
+                                                    ->action(function (?Comment $record): void {
+                                                        if (! $record) {
+                                                            return;
+                                                        }
+
+                                                        $this->deleteComment($record->id);
+                                                    })
+                                            ),
+                                        TextEntry::make('comment_reports_count')
+                                            ->label('بلاغات على التعليق')
+                                            ->state(fn (?Comment $record): int => (int) ($record?->reports()->count() ?? 0))
+                                            ->badge()
+                                            ->color(fn (?Comment $record): string => (int) ($record?->reports()->count() ?? 0) > 0 ? 'danger' : 'success'),
                                         TextEntry::make('created_at')->label('التاريخ')->since()->placeholder('-'),
                                     ])
                                     ->columns(2),
@@ -235,6 +272,10 @@ class ViewProduct extends ViewRecord
                                     ])
                                     ->columns(2),
                             ]),
+                    ])
+                    ->columnSpanFull(),
+                Tabs::make('التفاصيل المرتبطة')
+                    ->tabs([
                         Tab::make('المنتجات الفرعية')
                             ->badge(fn (): int => (int) $this->getRecord()->variants()->count())
                             ->schema([
@@ -244,7 +285,19 @@ class ViewProduct extends ViewRecord
                                     ->schema([
                                         TextEntry::make('sku')->label('SKU')->placeholder('-'),
                                         TextEntry::make('price')->label('السعر')->money('SAR')->placeholder('-'),
+                                        TextEntry::make('final_price')
+                                            ->label('السعر بعد العرض')
+                                            ->state(fn ($record): string => app(PriceService::class)
+                                                ->resolveFinalPriceForVariant($this->getRecord(), $record))
+                                            ->money('SAR')
+                                            ->placeholder('-'),
                                         TextEntry::make('stock')->label('المخزون')->placeholder('-'),
+                                        TextEntry::make('cart_items_count')
+                                            ->label('عدد الإضافات للسلة')
+                                            ->state(fn ($record): int => (int) $record->cartItems()->count()),
+                                        TextEntry::make('orders_count')
+                                            ->label('عدد الطلبات')
+                                            ->state(fn ($record): int => (int) $record->orders()->count()),
                                         TextEntry::make('attribute_values')
                                             ->label('الخصائص')
                                             ->state(fn ($record): string => $record->attributeValues
@@ -253,21 +306,28 @@ class ViewProduct extends ViewRecord
                                             ->placeholder('-')
                                             ->columnSpanFull(),
                                     ])
-                                    ->columns(3),
+                                    ->columns(4),
                             ]),
                         Tab::make('العروض')
-                            ->badge(fn (): int => (int) $this->getRecord()->promotionItems()->count())
+                            ->badge(fn (): int => count($this->resolveAppliedPromotions()))
                             ->schema([
-                                RepeatableEntry::make('promotionItems')
+                                RepeatableEntry::make('applied_promotions')
                                     ->label('العروض المرتبطة')
+                                    ->state(fn (): array => $this->resolveAppliedPromotions())
                                     ->placeholder('لا توجد عروض')
                                     ->schema([
-                                        TextEntry::make('promotion.title')->label('العرض')->placeholder('-'),
-                                        TextEntry::make('promotion.discount_type')->label('نوع الخصم')->placeholder('-'),
-                                        TextEntry::make('promotion.discount_value')->label('قيمة الخصم')->placeholder('-'),
-                                        TextEntry::make('status')->label('الحالة')->badge()->placeholder('-'),
-                                        TextEntry::make('promotion.starts_at')->label('بداية العرض')->since()->placeholder('-'),
-                                        TextEntry::make('promotion.ends_at')->label('نهاية العرض')->since()->placeholder('-'),
+                                        TextEntry::make('title')->label('العرض')->placeholder('-'),
+                                        TextEntry::make('level')->label('مستوى العرض')->badge()->placeholder('-'),
+                                        TextEntry::make('applied_via')->label('يخضع عبر')->placeholder('-'),
+                                        TextEntry::make('discount_type')->label('نوع الخصم')->placeholder('-'),
+                                        TextEntry::make('discount_value')->label('قيمة الخصم')->placeholder('-'),
+                                        TextEntry::make('active_state')
+                                            ->label('نشط؟')
+                                            ->badge()
+                                            ->color(fn (string $state): string => $state === 'نشط' ? 'success' : 'danger')
+                                            ->placeholder('-'),
+                                        TextEntry::make('starts_at')->label('بداية العرض')->since()->placeholder('-'),
+                                        TextEntry::make('ends_at')->label('نهاية العرض')->since()->placeholder('-'),
                                     ])
                                     ->columns(3),
                             ]),
@@ -348,5 +408,124 @@ class ViewProduct extends ViewRecord
                     ->columnSpanFull(),
             ])
             ->columns(2);
+    }
+
+    public function deleteComment(int|string $commentId): void
+    {
+        $this->getRecord()->comments()->whereKey($commentId)->delete();
+    }
+
+    private function resolveAppliedPromotions(): array
+    {
+        if ($this->appliedPromotionsCache !== null) {
+            return $this->appliedPromotionsCache;
+        }
+
+        /** @var Product $product */
+        $product = $this->getRecord()->loadMissing('subcategory:id,category_id');
+
+        $storeId = (int) $product->store_id;
+        $productId = (int) $product->id;
+        $subcategoryId = $product->subcategory_id ? (int) $product->subcategory_id : null;
+        $categoryId = $product->subcategory?->category_id ? (int) $product->subcategory->category_id : null;
+
+        $items = PromotionItem::query()
+            ->with('promotion')
+            ->approved()
+            ->whereHas('promotion', function ($query) use ($storeId): void {
+                $query
+                    ->whereIn('level', ['app', 'store'])
+                    ->where(function ($levelQuery) use ($storeId): void {
+                        $levelQuery
+                            ->where('level', 'app')
+                            ->orWhere(function ($storeLevelQuery) use ($storeId): void {
+                                $storeLevelQuery
+                                    ->where('level', 'store')
+                                    ->where('store_id', $storeId);
+                            });
+                    });
+            })
+            ->where(function ($query) use ($productId, $subcategoryId, $categoryId, $storeId): void {
+                $query
+                    ->where(function ($directProduct) use ($productId, $storeId): void {
+                        $directProduct
+                            ->where('promotable_type', Product::class)
+                            ->where('promotable_id', $productId)
+                            ->where(function ($storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    })
+                    ->orWhere(function ($storeScope) use ($storeId): void {
+                        $storeScope
+                            ->where('promotable_type', Store::class)
+                            ->where('promotable_id', $storeId)
+                            ->where(function ($storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    });
+
+                if ($subcategoryId !== null) {
+                    $query->orWhere(function ($subcategoryScope) use ($subcategoryId, $storeId): void {
+                        $subcategoryScope
+                            ->where('promotable_type', Subcategory::class)
+                            ->where('promotable_id', $subcategoryId)
+                            ->where(function ($storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    });
+                }
+
+                if ($categoryId !== null) {
+                    $query->orWhere(function ($categoryScope) use ($categoryId, $storeId): void {
+                        $categoryScope
+                            ->where('promotable_type', Category::class)
+                            ->where('promotable_id', $categoryId)
+                            ->where(function ($storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    });
+                }
+            })
+            ->get();
+
+        $this->appliedPromotionsCache = $items
+            ->groupBy('promotion_id')
+            ->map(function (Collection $promotionItems): array {
+                $promotion = $promotionItems->first()?->promotion;
+
+                return [
+                    'title' => $promotion?->title ?? '-',
+                    'level' => ($promotion?->level ?? null) === 'store' ? 'متجر' : 'تطبيق',
+                    'applied_via' => $promotionItems
+                        ->map(fn (PromotionItem $item): string => $this->mapPromotableType($item->promotable_type))
+                        ->unique()
+                        ->values()
+                        ->implode(' | '),
+                    'discount_type' => match ($promotion?->discount_type) {
+                        'percentage' => 'نسبة مئوية',
+                        'fixed' => 'قيمة ثابتة',
+                        default => '-',
+                    },
+                    'discount_value' => $promotion ? (string) $promotion->discount_value : '-',
+                    'active_state' => $promotion?->isEffectivelyActive() ? 'نشط' : 'غير نشط',
+                    'starts_at' => $promotion?->starts_at,
+                    'ends_at' => $promotion?->ends_at,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return $this->appliedPromotionsCache;
+    }
+
+    private function mapPromotableType(?string $type): string
+    {
+        return match ($type) {
+            Product::class => 'منتج',
+            Category::class => 'قسم رئيسي',
+            Subcategory::class => 'قسم فرعي',
+            Store::class => 'متجر',
+            default => '-'
+        };
     }
 }

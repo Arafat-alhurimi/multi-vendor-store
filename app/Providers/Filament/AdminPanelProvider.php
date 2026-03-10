@@ -10,6 +10,7 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationGroup;
 use Filament\Navigation\NavigationItem;
 use Filament\Panel;
 use Filament\PanelProvider;
@@ -32,6 +33,7 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            ->brandName('nsahelha')
             ->spa()
             ->login()
             ->colors([
@@ -46,6 +48,12 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 AccountWidget::class,
                 FilamentInfoWidget::class,
+            ])
+            ->navigationGroups([
+                NavigationGroup::make('العروض'),
+                NavigationGroup::make('إدارة الباقات'),
+                NavigationGroup::make('إدارة التجارة'),
+                NavigationGroup::make('أخرى'),
             ])
             ->navigationItems([
                 NavigationItem::make('طلبات إنشاء متاجر')
@@ -74,6 +82,10 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
             ])
             ->databaseNotifications(livewireComponent: \App\Livewire\Filament\DatabaseNotifications::class)
+            ->renderHook(
+                PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
+                fn (): \Illuminate\Contracts\View\View => view('filament.login-welcome'),
+            )
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.force-rtl'),

@@ -43,6 +43,7 @@ class VendorAdSubscription extends Model
         'starts_at',
         'ends_at',
         'status',
+        'request_type',
         'used_images',
         'used_videos',
         'used_promotions',
@@ -51,6 +52,7 @@ class VendorAdSubscription extends Model
     protected $casts = [
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
+        'request_type' => 'string',
         'used_images' => 'integer',
         'used_videos' => 'integer',
         'used_promotions' => 'integer',

@@ -18,9 +18,9 @@ class ReportResource extends Resource
 
     protected static ?string $navigationLabel = 'البلاغات';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
+    protected static string | \UnitEnum | null $navigationGroup = 'أخرى';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 999;
 
     public static function form(Schema $schema): Schema
     {

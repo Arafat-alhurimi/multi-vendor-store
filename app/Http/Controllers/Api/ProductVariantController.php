@@ -69,12 +69,22 @@ class ProductVariantController extends Controller
                 $createdVariants[] = $variant->load('attributeValues.attribute');
             }
 
+            $firstCreatedVariant = $createdVariants[0] ?? null;
+
+            if ($firstCreatedVariant) {
+                $product->update([
+                    'base_price' => (float) $firstCreatedVariant->price,
+                    'stock' => (int) $product->variants()->sum('stock'),
+                ]);
+            }
+
             return $createdVariants;
         });
 
         return response()->json([
             'message' => 'تم حفظ النسخ الفرعية بنجاح',
             'variants' => $created,
+            'product' => $product->fresh(['variants']),
         ], 201);
     }
 

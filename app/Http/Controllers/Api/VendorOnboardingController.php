@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Filament\Resources\Stores\StoreResource;
+use App\Filament\Resources\Users\UserResource;
 use App\Http\Controllers\Controller;
 use App\Models\Store;
 use App\Models\User;
 use App\Models\VendorFinancialDetail;
+use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -184,6 +188,8 @@ class VendorOnboardingController extends Controller
                 ];
         });
 
+            $this->notifyAdminsAboutStoreRequest($result['user'], $result['store']);
+
         return response()->json([
             'status' => 'success',
             'message' => 'تم حفظ بيانات البائع. أكمل التحقق عبر /verify-otp لتأكيد الحساب.',
@@ -192,6 +198,45 @@ class VendorOnboardingController extends Controller
             'financial_detail' => $result['financial'],
             'approval_status' => 'بانتظار التحقق من OTP',
         ], 201);
+    }
+
+    private function notifyAdminsAboutStoreRequest(User $user, Store $store): void
+    {
+        $admins = User::query()->where('role', 'admin')->get();
+        $storeUrl = StoreResource::getUrl('view', ['record' => $store]);
+        $pendingStoresUrl = UserResource::getUrl('pending');
+        $targetUrl = $storeUrl ?: $pendingStoresUrl;
+
+        foreach ($admins as $admin) {
+            $notification = Notification::make()
+                ->title('طلب متجر جديد')
+                ->body("تم تسجيل متجر جديد: {$store->name} بواسطة {$user->name} وهو بانتظار المراجعة.")
+                ->warning()
+                ->actions([
+                    Action::make('openStore')
+                        ->label('عرض المتجر')
+                        ->url($targetUrl),
+                ]);
+
+            $payload = $notification->toArray();
+            unset($payload['id']);
+            $payload['format'] = 'filament';
+            $payload['duration'] = 'persistent';
+            $payload['notification_category'] = 'store';
+            $payload['target_url'] = $targetUrl;
+            $payload['user_id'] = $user->id;
+            $payload['store_id'] = $store->id;
+
+            DB::table('filament_notifications')->insert([
+                'id' => (string) Str::uuid(),
+                'type' => 'App\\Notifications\\StoreOnboardingRequested',
+                'notifiable_type' => get_class($admin),
+                'notifiable_id' => $admin->getKey(),
+                'data' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function resolveFileType(?string $fileType, ?string $mimeType, string $url): string

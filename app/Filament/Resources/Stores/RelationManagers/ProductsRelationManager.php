@@ -2,8 +2,9 @@
 
 namespace App\Filament\Resources\Stores\RelationManagers;
 
-use App\Models\Category;
 use App\Models\Product;
+use App\Models\Promotion;
+use App\Models\PromotionItem;
 use App\Models\Subcategory;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -25,6 +26,10 @@ class ProductsRelationManager extends RelationManager
     protected static string $relationship = 'products';
 
     protected static ?string $title = 'منتجات المتجر';
+
+    public string $activeMainCategory = 'all';
+
+    private array $activePromotionCache = [];
 
     public function form(Schema $schema): Schema
     {
@@ -68,30 +73,69 @@ class ProductsRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('name_ar')
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                if ($this->activeMainCategory === 'all') {
+                    return $query;
+                }
+
+                return $query->whereHas('subcategory', fn (Builder $subQuery): Builder => $subQuery->where('category_id', (int) $this->activeMainCategory));
+            })
             ->recordUrl(fn ($record): string => ProductResource::getUrl('view', ['record' => $record]))
             ->columns([
                 Tables\Columns\TextColumn::make('name_ar')
                     ->label('الاسم (عربي)')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('subcategory.category.name_ar')
-                    ->label('الفئة الرئيسية')
-                    ->placeholder('-'),
-                Tables\Columns\TextColumn::make('subcategory.name_ar')
-                    ->label('القسم الفرعي')
+                Tables\Columns\TextColumn::make('section_path')
+                    ->label('القسم')
+                    ->state(fn (Product $record): string => collect([
+                        $record->subcategory?->category?->name_ar,
+                        $record->subcategory?->name_ar,
+                    ])->filter()->implode('>') ?: '-')
+                    ->badge()
+                    ->color('info')
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->where(function (Builder $inner) use ($search): void {
+                            $inner
+                                ->whereHas('subcategory', fn (Builder $sub): Builder => $sub->where('name_ar', 'like', "%{$search}%"))
+                                ->orWhereHas('subcategory.category', fn (Builder $cat): Builder => $cat->where('name_ar', 'like', "%{$search}%"));
+                        });
+                    })
                     ->placeholder('-'),
                 Tables\Columns\TextColumn::make('base_price')
                     ->label('السعر')
                     ->money('SAR'),
-                Tables\Columns\TextColumn::make('final_price')
-                    ->label('السعر بعد العرض')
-                    ->state(fn (Product $record): string => $record->final_price)
-                    ->money('SAR'),
                 Tables\Columns\TextColumn::make('stock')
                     ->label('المخزون'),
+                Tables\Columns\TextColumn::make('offer_name')
+                    ->label('اسم العرض')
+                    ->state(fn (Product $record): ?string => $this->resolveActivePromotionForProduct($record)?->title)
+                    ->badge()
+                    ->color('success')
+                    ->placeholder(''),
                 Tables\Columns\IconColumn::make('is_under_offer')
                     ->label('ضمن عرض؟')
                     ->boolean()
-                    ->state(fn (Product $record): bool => (float) $record->final_price < (float) $record->base_price),
+                    ->state(fn (Product $record): bool => $this->resolveActivePromotionForProduct($record) !== null),
+                Tables\Columns\TextColumn::make('final_price')
+                    ->label('السعر بعد العرض')
+                    ->state(function (Product $record): ?string {
+                        $promotion = $this->resolveActivePromotionForProduct($record);
+
+                        if (! $promotion) {
+                            return null;
+                        }
+
+                        $basePrice = (float) $record->base_price;
+                        $discountValue = (float) $promotion->discount_value;
+
+                        $final = $promotion->discount_type === 'percentage'
+                            ? $basePrice - (($basePrice * $discountValue) / 100)
+                            : $basePrice - $discountValue;
+
+                        return number_format(max($final, 0), 2, '.', '');
+                    })
+                    ->money('SAR')
+                    ->placeholder(''),
                 Tables\Columns\TextColumn::make('cart_total_count')
                     ->label('إضافات السلة')
                     ->state(fn (Product $record): int =>
@@ -171,22 +215,11 @@ class ProductsRelationManager extends RelationManager
                         false: fn (Builder $query): Builder => $query->whereDoesntHave('ratings'),
                         blank: fn (Builder $query): Builder => $query,
                     ),
-                SelectFilter::make('category')
-                    ->label('الفئة الرئيسية')
-                    ->options(fn (): array => Category::query()->orderBy('name_ar')->pluck('name_ar', 'id')->toArray())
-                    ->query(function (Builder $query, array $data): Builder {
-                        $value = $data['value'] ?? null;
-                        if (! $value) {
-                            return $query;
-                        }
-
-                        return $query->whereHas('subcategory', fn (Builder $subQuery): Builder => $subQuery->where('category_id', $value));
-                    }),
                 SelectFilter::make('subcategory_id')
                     ->label('القسم الفرعي')
                     ->options(fn (): array => Subcategory::query()->orderBy('name_ar')->pluck('name_ar', 'id')->toArray()),
             ])
-            ->headerActions([])
+            ->headerActions($this->getMainCategoryQuickActions())
             ->actions([
                 Action::make('viewProduct')
                     ->label('عرض المنتج')
@@ -194,5 +227,116 @@ class ProductsRelationManager extends RelationManager
                     ->url(fn ($record): string => ProductResource::getUrl('view', ['record' => $record])),
                 DeleteAction::make(),
             ]);
+    }
+
+    private function getMainCategoryQuickActions(): array
+    {
+        $actions = [
+            Action::make('main_category_all')
+                ->label('الكل')
+                ->color($this->activeMainCategory === 'all' ? 'primary' : 'gray')
+                ->action(function (): void {
+                    $this->activeMainCategory = 'all';
+                }),
+        ];
+
+        $categories = $this->getOwnerRecord()
+            ->categories()
+            ->orderBy('categories.name_ar')
+            ->get(['categories.id', 'categories.name_ar']);
+
+        $categoryActions = $categories
+            ->map(function ($category): Action {
+                $categoryId = (string) $category->id;
+
+                return Action::make('main_category_'.$categoryId)
+                    ->label((string) $category->name_ar)
+                    ->color($this->activeMainCategory === $categoryId ? 'primary' : 'gray')
+                    ->action(function () use ($categoryId): void {
+                        $this->activeMainCategory = $categoryId;
+                    });
+            })
+            ->all();
+
+        return array_merge($actions, $categoryActions);
+    }
+
+    private function resolveActivePromotionForProduct(Product $product): ?Promotion
+    {
+        $cacheKey = (int) $product->id;
+
+        if (array_key_exists($cacheKey, $this->activePromotionCache)) {
+            return $this->activePromotionCache[$cacheKey];
+        }
+
+        $product->loadMissing('subcategory:id,category_id');
+
+        $storeId = (int) $product->store_id;
+        $productId = (int) $product->id;
+        $subcategoryId = $product->subcategory_id ? (int) $product->subcategory_id : null;
+        $categoryId = $product->subcategory?->category_id ? (int) $product->subcategory->category_id : null;
+
+        $item = PromotionItem::query()
+            ->with('promotion')
+            ->approved()
+            ->whereHas('promotion', function (Builder $query) use ($storeId): void {
+                $query
+                    ->currentlyActive(now())
+                    ->whereIn('level', ['app', 'store'])
+                    ->where(function (Builder $levelQuery) use ($storeId): void {
+                        $levelQuery
+                            ->where('level', 'app')
+                            ->orWhere(function (Builder $storeLevelQuery) use ($storeId): void {
+                                $storeLevelQuery
+                                    ->where('level', 'store')
+                                    ->where('store_id', $storeId);
+                            });
+                    });
+            })
+            ->where(function (Builder $query) use ($productId, $subcategoryId, $categoryId, $storeId): void {
+                $query
+                    ->where(function (Builder $directProduct) use ($productId, $storeId): void {
+                        $directProduct
+                            ->where('promotable_type', Product::class)
+                            ->where('promotable_id', $productId)
+                            ->where(function (Builder $storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    })
+                    ->orWhere(function (Builder $storeScope) use ($storeId): void {
+                        $storeScope
+                            ->where('promotable_type', \App\Models\Store::class)
+                            ->where('promotable_id', $storeId)
+                            ->where(function (Builder $storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    });
+
+                if ($subcategoryId !== null) {
+                    $query->orWhere(function (Builder $subcategoryScope) use ($subcategoryId, $storeId): void {
+                        $subcategoryScope
+                            ->where('promotable_type', Subcategory::class)
+                            ->where('promotable_id', $subcategoryId)
+                            ->where(function (Builder $storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    });
+                }
+
+                if ($categoryId !== null) {
+                    $query->orWhere(function (Builder $categoryScope) use ($categoryId, $storeId): void {
+                        $categoryScope
+                            ->where('promotable_type', \App\Models\Category::class)
+                            ->where('promotable_id', $categoryId)
+                            ->where(function (Builder $storeContext) use ($storeId): void {
+                                $storeContext->whereNull('store_id')->orWhere('store_id', $storeId);
+                            });
+                    });
+                }
+            })
+            ->orderBy('created_at')
+            ->first();
+
+        return $this->activePromotionCache[$cacheKey] = $item?->promotion;
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Filament\Resources\Promotions\PromotionResource;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\Product;
@@ -9,10 +10,15 @@ use App\Models\Promotion;
 use App\Models\PromotionItem;
 use App\Models\Store;
 use App\Models\Subcategory;
+use App\Models\User;
+use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class VendorPromotionController extends Controller
 {
@@ -242,10 +248,10 @@ class VendorPromotionController extends Controller
             ], 422);
         }
 
-        $storeItem = $this->upsertJoinRequest($promotion->id, Store::class, $store->id, $store->id);
-
+        $storeItem = null;
         $items = [];
         if ($scope === 'store') {
+            $storeItem = $this->upsertJoinRequest($promotion->id, Store::class, $store->id, $store->id);
             $items[] = $storeItem;
         }
 
@@ -268,6 +274,8 @@ class VendorPromotionController extends Controller
             }
         }
 
+        $this->notifyAdminsAboutPromotionJoinRequest($promotion, $store, $scope, $targetProducts->count());
+
         return response()->json([
             'message' => 'تم إرسال طلب الانضمام بنجاح وهو بانتظار موافقة الإدارة.',
             'store_item' => $storeItem,
@@ -275,6 +283,43 @@ class VendorPromotionController extends Controller
             'scope' => $scope,
             'target_products_count' => $targetProducts->count(),
         ], 201);
+    }
+
+    private function notifyAdminsAboutPromotionJoinRequest(Promotion $promotion, Store $store, string $scope, int $productsCount): void
+    {
+        $admins = User::query()->where('role', 'admin')->get();
+        $targetUrl = PromotionResource::getUrl('view', ['record' => $promotion]);
+
+        foreach ($admins as $admin) {
+            $notification = Notification::make()
+                ->title('طلب انضمام جديد إلى عرض')
+                ->body("متجر {$store->name} أرسل طلب انضمام ({$scope}) لعرض {$promotion->title} بعدد منتجات {$productsCount}.")
+                ->info()
+                ->actions([
+                    Action::make('openPromotion')
+                        ->label('فتح العرض')
+                        ->url($targetUrl),
+                ]);
+
+            $payload = $notification->toArray();
+            unset($payload['id']);
+            $payload['format'] = 'filament';
+            $payload['duration'] = 'persistent';
+            $payload['notification_category'] = 'promotion';
+            $payload['target_url'] = $targetUrl;
+            $payload['promotion_id'] = $promotion->id;
+            $payload['store_id'] = $store->id;
+
+            DB::table('filament_notifications')->insert([
+                'id' => (string) Str::uuid(),
+                'type' => 'App\\Notifications\\PromotionJoinRequested',
+                'notifiable_type' => get_class($admin),
+                'notifiable_id' => $admin->getKey(),
+                'data' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
     }
 
     private function upsertJoinRequest(int $promotionId, string $promotableType, int $promotableId, int $storeId): PromotionItem

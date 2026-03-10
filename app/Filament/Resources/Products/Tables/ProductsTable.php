@@ -29,12 +29,21 @@ class ProductsTable
                     ->label('المتجر')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('subcategory.category.name_ar')
-                    ->label('الفئة الرئيسية')
-                    ->placeholder('-'),
-                TextColumn::make('subcategory.name_ar')
-                    ->label('القسم الفرعي')
-                    ->searchable()
+                TextColumn::make('section_path')
+                    ->label('القسم')
+                    ->state(fn (Product $record): string => collect([
+                        $record->subcategory?->category?->name_ar,
+                        $record->subcategory?->name_ar,
+                    ])->filter()->implode('>') ?: '-')
+                    ->badge()
+                    ->color('info')
+                    ->searchable(query: function (Builder $query, string $search): Builder {
+                        return $query->where(function (Builder $inner) use ($search): void {
+                            $inner
+                                ->whereHas('subcategory', fn (Builder $sub): Builder => $sub->where('name_ar', 'like', "%{$search}%"))
+                                ->orWhereHas('subcategory.category', fn (Builder $cat): Builder => $cat->where('name_ar', 'like', "%{$search}%"));
+                        });
+                    })
                     ->placeholder('-'),
                 TextColumn::make('base_price')
                     ->label('السعر')

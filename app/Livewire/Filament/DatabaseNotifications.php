@@ -3,7 +3,6 @@
 namespace App\Livewire\Filament;
 
 use App\Filament\Resources\Users\UserResource;
-use Filament\Actions\Action;
 use Filament\Livewire\DatabaseNotifications as BaseDatabaseNotifications;
 use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Builder;
@@ -13,13 +12,22 @@ use Illuminate\Support\Str;
 
 class DatabaseNotifications extends BaseDatabaseNotifications
 {
+    private const CATEGORIES = ['all', 'report', 'customer', 'store', 'subscription', 'promotion'];
+
     public string $notificationCategory = 'all';
 
     public function setNotificationCategory(string $category): void
     {
-        $this->notificationCategory = in_array($category, ['all', 'report', 'account'], true)
+        $this->notificationCategory = in_array($category, self::CATEGORIES, true)
             ? $category
             : 'all';
+
+        $this->resetPage(pageName: 'database-notifications-page');
+    }
+
+    public function deleteNotification(string $id): void
+    {
+        $this->getNotificationsQuery()->whereKey($id)->delete();
 
         $this->resetPage(pageName: 'database-notifications-page');
     }
@@ -45,20 +53,8 @@ class DatabaseNotifications extends BaseDatabaseNotifications
 
     protected function applyNotificationCategoryFilter(Builder | Relation $query): Builder | Relation
     {
-        if ($this->notificationCategory === 'report') {
-            return $query->where(function (Builder $nested): void {
-                $nested
-                    ->where('data->notification_category', 'report')
-                    ->orWhere('data->title', 'like', '%بلاغ%');
-            });
-        }
-
-        if ($this->notificationCategory === 'account') {
-            return $query->where(function (Builder $nested): void {
-                $nested
-                    ->where('data->notification_category', 'account')
-                    ->orWhere('data->title', 'like', '%مستخدم جديد%');
-            });
+        if ($this->notificationCategory !== 'all') {
+            return $this->applyCategoryFilter($query, $this->notificationCategory);
         }
 
         return $query;
@@ -71,41 +67,139 @@ class DatabaseNotifications extends BaseDatabaseNotifications
 
     public function getNotification(DatabaseNotification $notification): Notification
     {
-        $filamentNotification = parent::getNotification($notification);
+        return parent::getNotification($notification);
+    }
 
-        $data = is_array($notification->data) ? $notification->data : [];
-        $title = (string) ($data['title'] ?? '');
+    public function resolveNotificationCategory(array $data): string
+    {
         $category = (string) ($data['notification_category'] ?? '');
-        $isAccount = $category === 'account' || Str::contains($title, 'مستخدم جديد');
-
-        if (! $isAccount) {
-            return $filamentNotification;
+        if (in_array($category, self::CATEGORIES, true) && $category !== 'all') {
+            return $category;
         }
 
-        $userUrl = $data['target_url'] ?? null;
+        $title = (string) ($data['title'] ?? '');
 
-        if (blank($userUrl) && filled($data['user_id'] ?? null)) {
-            $userUrl = UserResource::getUrl('view', ['record' => $data['user_id']]);
+        if (Str::contains($title, 'بلاغ')) {
+            return 'report';
         }
 
-        if (blank($userUrl)) {
-            return $filamentNotification;
+        if (Str::contains($title, ['اشتراك', 'تجديد'])) {
+            return 'subscription';
         }
 
-        $hasOpenUserAction = collect($filamentNotification->getActions())
-            ->contains(fn ($action) => method_exists($action, 'getLabel') && $action->getLabel() === 'فتح المستخدم');
-
-        if (! $hasOpenUserAction) {
-            $existingActions = $filamentNotification->getActions();
-
-            $filamentNotification->actions([
-                ...$existingActions,
-                Action::make('openUserInline')
-                    ->label('فتح المستخدم')
-                    ->url($userUrl),
-            ]);
+        if (Str::contains($title, ['انضمام', 'عرض'])) {
+            return 'promotion';
         }
 
-        return $filamentNotification;
+        if (Str::contains($title, ['متجر', 'بائع'])) {
+            return 'store';
+        }
+
+        if ($category === 'account' || Str::contains($title, ['مستخدم جديد', 'عميل'])) {
+            return 'customer';
+        }
+
+        return 'all';
+    }
+
+    public function getCategoryLabel(array $data): string
+    {
+        return match ($this->resolveNotificationCategory($data)) {
+            'report' => 'بلاغات',
+            'customer' => 'عملاء',
+            'store' => 'متاجر',
+            'subscription' => 'اشتراكات',
+            'promotion' => 'عروض',
+            default => 'تنبيهات عامة',
+        };
+    }
+
+    public function getCategoryColor(array $data): string
+    {
+        return match ($this->resolveNotificationCategory($data)) {
+            'report' => 'danger',
+            'customer' => 'info',
+            'store' => 'warning',
+            'subscription' => 'success',
+            'promotion' => 'primary',
+            default => 'gray',
+        };
+    }
+
+    public function getNotificationAction(array $data): ?array
+    {
+        return $this->resolveNotificationAction($data);
+    }
+
+    private function applyCategoryFilter(Builder | Relation $query, string $category): Builder | Relation
+    {
+        return $query->where(function (Builder $nested) use ($category): void {
+            if ($category === 'report') {
+                $nested
+                    ->where('data->notification_category', 'report')
+                    ->orWhere('data->title', 'like', '%بلاغ%');
+
+                return;
+            }
+
+            if ($category === 'customer') {
+                $nested
+                    ->where('data->notification_category', 'customer')
+                    ->orWhere('data->notification_category', 'account')
+                    ->orWhere('data->title', 'like', '%مستخدم جديد%')
+                    ->orWhere('data->title', 'like', '%عميل%');
+
+                return;
+            }
+
+            if ($category === 'store') {
+                $nested
+                    ->where('data->notification_category', 'store')
+                    ->orWhere('data->title', 'like', '%متجر%')
+                    ->orWhere('data->title', 'like', '%بائع%');
+
+                return;
+            }
+
+            if ($category === 'subscription') {
+                $nested
+                    ->where('data->notification_category', 'subscription')
+                    ->orWhere('data->title', 'like', '%اشتراك%')
+                    ->orWhere('data->title', 'like', '%تجديد%');
+
+                return;
+            }
+
+            $nested
+                ->where('data->notification_category', 'promotion')
+                ->orWhere('data->title', 'like', '%انضمام%')
+                ->orWhere('data->title', 'like', '%عرض%');
+        });
+    }
+
+    private function resolveNotificationAction(array $data): ?array
+    {
+        $category = $this->resolveNotificationCategory($data);
+        $targetUrl = $data['target_url'] ?? null;
+
+        if ($category === 'customer' && blank($targetUrl) && filled($data['user_id'] ?? null)) {
+            $targetUrl = UserResource::getUrl('view', ['record' => $data['user_id']]);
+        }
+
+        if (blank($targetUrl)) {
+            return null;
+        }
+
+        return [
+            'label' => match ($category) {
+                'customer' => 'عرض العميل',
+                'store' => 'عرض المتجر',
+                'subscription' => 'فتح طلبات الاشتراكات',
+                'promotion' => 'فتح العرض',
+                'report' => 'فتح البلاغ',
+                default => 'فتح التنبيه',
+            },
+            'url' => (string) $targetUrl,
+        ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Ad;
 use App\Models\PromotionItem;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -112,6 +113,11 @@ class Store extends Model
         return $this->hasMany(Promotion::class);
     }
 
+    public function ads(): HasMany
+    {
+        return $this->hasMany(Ad::class, 'vendor_id', 'user_id');
+    }
+
     public function media(): MorphMany
     {
         return $this->morphMany(Media::class, 'mediable');
@@ -140,6 +146,11 @@ class Store extends Model
     public function promotionItems(): MorphMany
     {
         return $this->morphMany(PromotionItem::class, 'promotable');
+    }
+
+    public function joinedPromotionItems(): HasMany
+    {
+        return $this->hasMany(PromotionItem::class, 'store_id');
     }
 
     public function vendorFinancialDetail(): HasOneThrough

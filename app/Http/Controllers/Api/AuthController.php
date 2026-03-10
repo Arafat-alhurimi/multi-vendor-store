@@ -46,14 +46,22 @@ class AuthController extends Controller
             foreach ($admins as $admin) {
                 try {
                     $userUrl = UserResource::getUrl('view', ['record' => $user]);
+                    $isVendor = $user->role === 'vendor';
+                    $targetUrl = $isVendor ? UserResource::getUrl('pending') : $userUrl;
+                    $actionLabel = $isVendor ? 'عرض المتجر' : 'عرض العميل';
+                    $notificationCategory = $isVendor ? 'store' : 'customer';
+                    $title = $isVendor ? 'طلب متجر جديد' : 'عميل جديد';
+                    $body = $isVendor
+                        ? "تم تسجيل بائع جديد: {$user->name} ({$user->email}) وهو بانتظار مراجعة المتجر."
+                        : "تم تسجيل عميل جديد: {$user->name} ({$user->email})";
 
                     Notification::make()
-                        ->title('مستخدم جديد')
-                        ->body("تم تسجيل مستخدم جديد: {$user->name} ({$user->email})")
+                        ->title($title)
+                        ->body($body)
                         ->actions([
                             Action::make('openUser')
-                                ->label('عرض المستخدم')
-                                ->url($userUrl),
+                                ->label($actionLabel)
+                                ->url($targetUrl),
                         ])
                         ->success()
                         ->sendToDatabase($admin);
@@ -81,9 +89,9 @@ class AuthController extends Controller
                                 $data['duration'] = $data['duration'] ?? 'persistent';
                             }
 
-                            $data['notification_category'] = $data['notification_category'] ?? 'account';
+                            $data['notification_category'] = $data['notification_category'] ?? $notificationCategory;
                             $data['user_id'] = $data['user_id'] ?? $user->id;
-                            $data['target_url'] = $data['target_url'] ?? $userUrl;
+                            $data['target_url'] = $data['target_url'] ?? $targetUrl;
 
                             try {
                                 DB::table('filament_notifications')
@@ -101,13 +109,13 @@ class AuthController extends Controller
                         // Fallback: insert directly into filament_notifications with Filament format
                         try {
                             $payload = [
-                                'title' => 'مستخدم جديد',
-                                'body' => "تم تسجيل مستخدم جديد: {$user->name} ({$user->email})",
+                                'title' => $title,
+                                'body' => $body,
                                 'user_id' => $user->id,
-                                'target_url' => $userUrl,
+                                'target_url' => $targetUrl,
                                 'duration' => 'persistent',
                                 'format' => 'filament',
-                                'notification_category' => 'account',
+                                'notification_category' => $notificationCategory,
                             ];
 
                             DB::table('filament_notifications')->insert([

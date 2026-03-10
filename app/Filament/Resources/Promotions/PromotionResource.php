@@ -30,7 +30,6 @@ use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -40,18 +39,22 @@ class PromotionResource extends Resource
 {
     protected static ?string $model = Promotion::class;
 
+    protected static ?string $modelLabel = 'عرض تطبيق';
+
+    protected static ?string $pluralModelLabel = 'عروض التطبيق';
+
     protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-megaphone';
 
-    protected static ?string $navigationLabel = 'الحملات';
+    protected static ?string $navigationLabel = 'عروض التطبيق';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
+    protected static string | \UnitEnum | null $navigationGroup = 'العروض';
 
     public static function form(Schema $schema): Schema
     {
         return $schema
             ->schema([
                 TextInput::make('title')
-                    ->label('عنوان الحملة')
+                    ->label('عنوان العرض')
                     ->required()
                     ->maxLength(255),
 
@@ -107,14 +110,6 @@ class PromotionResource extends Resource
                     ->label('العنوان')
                     ->searchable(),
 
-                BadgeColumn::make('level')
-                    ->label('نوع العرض')
-                    ->formatStateUsing(fn (string $state): string => $state === 'app' ? 'عرض تطبيق' : 'عرض متجر')
-                    ->colors([
-                        'primary' => 'app',
-                        'success' => 'store',
-                    ]),
-
                 TextColumn::make('stores_in_offer_count')
                     ->label('عدد المتاجر في العرض')
                     ->state(fn (Promotion $record): int => static::resolvePromotionTargetStoreIds($record)->count()),
@@ -143,14 +138,14 @@ class PromotionResource extends Resource
                 IconColumn::make('is_active')
                     ->label('نشط')
                     ->boolean(),
+
+                BadgeColumn::make('pending_join_requests_count')
+                    ->label('طلبات الانضمام')
+                    ->state(fn (Promotion $record): int => (int) ($record->pending_join_requests_count ?? 0))
+                    ->formatStateUsing(fn (int $state): string => $state > 0 ? 'يوجد طلبات ('.$state.')' : 'لا يوجد')
+                    ->color(fn (int $state): string => $state > 0 ? 'warning' : 'gray'),
             ])
             ->filters([
-                SelectFilter::make('level')
-                    ->label('نوع العرض')
-                    ->options([
-                        'app' => 'عروض التطبيق',
-                        'store' => 'عروض المتاجر',
-                    ]),
                 TernaryFilter::make('is_active')
                     ->label('الحالة')
                     ->trueLabel('نشط')
@@ -198,10 +193,16 @@ class PromotionResource extends Resource
                         false: fn (Builder $query): Builder => $query->whereNull('store_id'),
                         blank: fn (Builder $query): Builder => $query,
                     ),
-                SelectFilter::make('store_id')
-                    ->label('متجر العرض (إن وجد)')
-                    ->options(fn (): array => Store::query()->orderBy('name')->pluck('name', 'id')->toArray())
-                    ->searchable(),
+                TernaryFilter::make('has_pending_join_requests')
+                    ->label('طلبات انضمام')
+                    ->trueLabel('يوجد')
+                    ->falseLabel('لا يوجد')
+                    ->placeholder('الكل')
+                    ->queries(
+                        true: fn (Builder $query): Builder => $query->whereHas('items', fn (Builder $itemsQuery): Builder => $itemsQuery->where('status', 'pending')),
+                        false: fn (Builder $query): Builder => $query->whereDoesntHave('items', fn (Builder $itemsQuery): Builder => $itemsQuery->where('status', 'pending')),
+                        blank: fn (Builder $query): Builder => $query,
+                    ),
                 Filter::make('starts_between')
                     ->label('تاريخ البدء')
                     ->form([
@@ -253,7 +254,26 @@ class PromotionResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery();
+        return parent::getEloquentQuery()
+            ->where('level', 'app')
+            ->withCount([
+                'items as pending_join_requests_count' => fn (Builder $query): Builder => $query->where('status', 'pending'),
+            ]);
+    }
+
+    public static function getNavigationBadge(): ?string
+    {
+        $count = Promotion::query()
+            ->where('level', 'app')
+            ->whereHas('items', fn (Builder $query): Builder => $query->where('status', 'pending'))
+            ->count();
+
+        return $count > 0 ? (string) $count : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
     }
 
     private static function resolvePromotionTargetProductIds(Promotion $promotion): Collection

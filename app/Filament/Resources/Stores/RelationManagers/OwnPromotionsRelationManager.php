@@ -2,16 +2,21 @@
 
 namespace App\Filament\Resources\Stores\RelationManagers;
 
-use App\Filament\Resources\Promotions\PromotionResource;
+use App\Models\CartItem;
 use App\Models\Category;
+use App\Models\Order;
 use App\Models\Product;
+use App\Models\Promotion;
+use App\Models\PromotionItem;
 use App\Models\Store;
 use App\Models\Subcategory;
+use Filament\Actions\Action;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 
 class OwnPromotionsRelationManager extends RelationManager
 {
@@ -27,139 +32,297 @@ class OwnPromotionsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->recordUrl(fn ($record): string => PromotionResource::getUrl('view', ['record' => $record]))
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->where('level', 'store'))
+            ->recordAction('viewDetails')
+            ->recordUrl(null)
             ->columns([
-                Tables\Columns\TextColumn::make('title')->label('العرض')->searchable(),
+                Tables\Columns\ImageColumn::make('image')
+                    ->label('صورة العرض')
+                    ->disk('s3')
+                    ->circular()
+                    ->defaultImageUrl(null),
+                Tables\Columns\TextColumn::make('title')
+                    ->label('اسم العرض')
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('target_details')
-                    ->label('العرض على')
-                    ->state(fn ($record): string => $this->resolvePromotionTargetDetails($record))
+                    ->label('على ماذا؟')
+                    ->state(fn (Promotion $record): string => $this->resolvePromotionTargetDetails($record))
                     ->wrap(),
-                Tables\Columns\TextColumn::make('affected_products_count')
-                    ->label('عدد المنتجات الخاضعة')
-                    ->state(fn ($record): int => $this->countAffectedProducts($record)),
-                Tables\Columns\TextColumn::make('discount_type')->label('نوع الخصم'),
-                Tables\Columns\TextColumn::make('discount_value')->label('قيمة الخصم'),
-                Tables\Columns\TextColumn::make('ends_at')->label('ينتهي في')->dateTime('Y-m-d H:i')->placeholder('-'),
-                Tables\Columns\IconColumn::make('effective_active')
-                    ->label('نشط؟')
-                    ->boolean()
-                    ->state(fn ($record): bool => $record->isEffectivelyActive()),
+                Tables\Columns\TextColumn::make('products_in_offer_count')
+                    ->label('عدد المنتجات')
+                    ->state(fn (Promotion $record): int => $this->resolvePromotionTargetProductIds($record)->count()),
+                Tables\Columns\TextColumn::make('starts_at')
+                    ->label('يبدأ')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('ends_at')
+                    ->label('ينتهي')
+                    ->dateTime('Y-m-d H:i')
+                    ->sortable(),
+                Tables\Columns\BadgeColumn::make('discount_type')
+                    ->label('نوع الخصم')
+                    ->formatStateUsing(fn (string $state): string => $state === 'percentage' ? 'نسبة مئوية' : 'قيمة ثابتة')
+                    ->colors([
+                        'info' => 'percentage',
+                        'primary' => 'fixed',
+                    ]),
+                Tables\Columns\TextColumn::make('discount_value')
+                    ->label('قيمة الخصم')
+                    ->sortable(),
+                Tables\Columns\IconColumn::make('is_active')
+                    ->label('نشط')
+                    ->boolean(),
             ])
-            ->filters([
-                SelectFilter::make('activity')
-                    ->label('حالة العرض')
-                    ->options([
-                        'active' => 'نشط',
-                        'ended' => 'منتهي',
-                    ])
-                    ->query(function ($query, array $data) {
-                        $value = $data['value'] ?? null;
-
-                        if ($value === 'active') {
-                            return $query->where('is_active', true)->where(function ($q) {
-                                $q->whereNull('ends_at')->orWhere('ends_at', '>=', now());
-                            });
-                        }
-
-                        if ($value === 'ended') {
-                            return $query->whereNotNull('ends_at')->where('ends_at', '<', now());
-                        }
-
-                        return $query;
-                    }),
-            ])
+            ->defaultSort('starts_at', 'desc')
             ->headerActions([])
-            ->actions([]);
+            ->actions([
+                Action::make('viewDetails')
+                    ->label('تفاصيل العرض')
+                    ->icon('heroicon-o-eye')
+                    ->modalHeading('تفاصيل عرض المتجر')
+                    ->modalWidth('7xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('إغلاق')
+                    ->modalContent(fn (Promotion $record) => view('filament.store-promotions.promotion-details-modal', [
+                        'promotion' => $record,
+                        'summary' => $this->resolvePromotionDetailsSummary($record),
+                        'products' => $this->resolvePromotionTargetProductsWithMetrics($record),
+                    ])),
+            ]);
     }
 
-    private function resolvePromotionTargetDetails($promotion): string
+    private function resolvePromotionTargetDetails(Promotion $promotion): string
     {
-        $items = $promotion->items()->with('promotable')->get();
+        $items = PromotionItem::query()
+            ->where('promotion_id', $promotion->id)
+            ->approved()
+            ->with('promotable')
+            ->get(['promotable_type', 'promotable_id', 'store_id']);
 
         if ($items->isEmpty()) {
-            return 'كل منتجات المتجر';
+            return 'غير محدد';
         }
 
-        $labels = $items->map(function ($item): string {
+        $labels = $items->map(function (PromotionItem $item): string {
             $target = $item->promotable;
-
-            if (! $target) {
-                return 'غير محدد';
-            }
-
             return match ($item->promotable_type) {
-                Product::class => 'منتج: ' . ($target->name_ar ?: ('#' . $target->id)),
-                Category::class => 'قسم رئيسي: ' . ($target->name_ar ?: ('#' . $target->id)),
-                Subcategory::class => 'قسم فرعي: ' . ($target->name_ar ?: ('#' . $target->id)),
-                Store::class => 'المتجر كامل',
-                default => 'هدف: #' . $target->id,
+                Store::class => 'متجر كامل: ' . ($target?->name ?? ('#' . $item->promotable_id)),
+                Category::class => 'قسم رئيسي: ' . ($target?->name_ar ?? ('#' . $item->promotable_id)),
+                Subcategory::class => 'قسم فرعي: ' . ($target?->name_ar ?? ('#' . $item->promotable_id)),
+                Product::class => 'منتج: ' . ($target?->name_ar ?? ('#' . $item->promotable_id)),
+                default => class_basename((string) $item->promotable_type) . ': #' . $item->promotable_id,
             };
         })->unique()->values();
 
-        if ($labels->count() <= 3) {
+        if ($labels->count() <= 2) {
             return $labels->implode(' | ');
         }
 
-        return $labels->take(3)->implode(' | ') . ' ... +' . ($labels->count() - 3);
+        return $labels->take(2)->implode(' | ') . ' ... +' . ($labels->count() - 2);
     }
 
-    private function countAffectedProducts($promotion): int
+    private function resolvePromotionTargetProductIds(Promotion $promotion): Collection
     {
-        $store = $this->getOwnerRecord();
-        $items = $promotion->items()->with('promotable')->get();
+        $ownerStoreId = (int) $this->getOwnerRecord()->id;
+
+        $items = PromotionItem::query()
+            ->where('promotion_id', $promotion->id)
+            ->approved()
+            ->get(['promotable_type', 'promotable_id', 'store_id']);
 
         if ($items->isEmpty()) {
-            return (int) $store->products()->count();
+            return collect();
         }
 
         $productIds = collect();
 
         foreach ($items as $item) {
-            $targetId = $item->promotable_id;
-
-            if (! $targetId) {
-                continue;
-            }
+            $effectiveStoreId = $item->store_id ?: $ownerStoreId;
 
             if ($item->promotable_type === Product::class) {
-                $ids = Product::query()
-                    ->where('store_id', $store->id)
-                    ->whereKey($targetId)
-                    ->pluck('id');
-
-                $productIds = $productIds->merge($ids);
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->whereKey($item->promotable_id)
+                        ->where('store_id', $effectiveStoreId)
+                        ->pluck('id')
+                );
                 continue;
             }
 
-            if ($item->promotable_type === Category::class) {
-                $ids = Product::query()
-                    ->where('store_id', $store->id)
-                    ->whereHas('subcategory', fn ($query) => $query->where('category_id', $targetId))
-                    ->pluck('id');
-
-                $productIds = $productIds->merge($ids);
+            if ($item->promotable_type === Store::class) {
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->where('store_id', $item->promotable_id)
+                        ->where('store_id', $ownerStoreId)
+                        ->pluck('id')
+                );
                 continue;
             }
 
             if ($item->promotable_type === Subcategory::class) {
-                $ids = Product::query()
-                    ->where('store_id', $store->id)
-                    ->where('subcategory_id', $targetId)
-                    ->pluck('id');
-
-                $productIds = $productIds->merge($ids);
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->where('subcategory_id', $item->promotable_id)
+                        ->where('store_id', $effectiveStoreId)
+                        ->pluck('id')
+                );
                 continue;
             }
 
-            if ($item->promotable_type === Store::class && (int) $targetId === (int) $store->id) {
-                $ids = Product::query()
-                    ->where('store_id', $store->id)
-                    ->pluck('id');
-
-                $productIds = $productIds->merge($ids);
+            if ($item->promotable_type === Category::class) {
+                $productIds = $productIds->merge(
+                    Product::query()
+                        ->whereHas('subcategory', fn (Builder $query): Builder => $query->where('category_id', $item->promotable_id))
+                        ->where('store_id', $effectiveStoreId)
+                        ->pluck('id')
+                );
             }
         }
 
-        return $productIds->unique()->count();
+        return $productIds->filter()->unique()->values();
+    }
+
+    private function resolvePromotionTargetProductsWithMetrics(Promotion $promotion): Collection
+    {
+        $productIds = $this->resolvePromotionTargetProductIds($promotion);
+
+        if ($productIds->isEmpty()) {
+            return collect();
+        }
+
+        return Product::query()
+            ->with(['variants:id,product_id,price', 'subcategory:id,name_ar,category_id', 'subcategory.category:id,name_ar'])
+            ->whereIn('id', $productIds->all())
+            ->get(['id', 'subcategory_id', 'name_ar', 'base_price', 'stock'])
+            ->map(function (Product $product) use ($promotion): array {
+                $basePrice = (float) $product->base_price;
+                $afterPrice = $this->applyPromotionDiscount($basePrice, (string) $promotion->discount_type, (float) $promotion->discount_value);
+
+                return [
+                    'id' => $product->id,
+                    'name_ar' => $product->name_ar,
+                    'category_name' => $product->subcategory?->category?->name_ar,
+                    'subcategory_name' => $product->subcategory?->name_ar,
+                    'base_price' => number_format($basePrice, 2, '.', ''),
+                    'after_price' => number_format($afterPrice, 2, '.', ''),
+                    'stock' => (int) $product->stock,
+                    'cart_additions_count' => $this->countProductBenefitedCartAdditions($product, $promotion),
+                    'orders_count' => $this->countProductBenefitedOrders($product, $promotion),
+                ];
+            })
+            ->values();
+    }
+
+    private function resolvePromotionDetailsSummary(Promotion $promotion): array
+    {
+        $productIds = $this->resolvePromotionTargetProductIds($promotion);
+
+        $products = Product::query()
+            ->whereIn('id', $productIds->all())
+            ->with('variants:id,product_id,price')
+            ->get(['id', 'base_price']);
+
+        return [
+            'products_count' => $products->count(),
+            'cart_additions_count' => (int) $products->sum(fn (Product $product): int => $this->countProductBenefitedCartAdditions($product, $promotion)),
+            'orders_count' => (int) $products->sum(fn (Product $product): int => $this->countProductBenefitedOrders($product, $promotion)),
+        ];
+    }
+
+    private function countProductBenefitedCartAdditions(Product $product, Promotion $promotion): int
+    {
+        $discountType = (string) $promotion->discount_type;
+        $discountValue = (float) $promotion->discount_value;
+
+        $baseOfferPrice = number_format(
+            $this->applyPromotionDiscount((float) $product->base_price, $discountType, $discountValue),
+            2,
+            '.',
+            ''
+        );
+
+        $variantOfferPrices = $product->variants
+            ->mapWithKeys(fn ($variant) => [
+                (int) $variant->id => number_format(
+                    $this->applyPromotionDiscount((float) ($variant->price ?? $product->base_price), $discountType, $discountValue),
+                    2,
+                    '.',
+                    ''
+                ),
+            ]);
+
+        return (int) CartItem::query()
+            ->where('product_id', $product->id)
+            ->where(function (Builder $query) use ($baseOfferPrice, $variantOfferPrices): void {
+                $query->where(function (Builder $baseQuery) use ($baseOfferPrice): void {
+                    $baseQuery
+                        ->whereNull('product_variation_id')
+                        ->where('price_at_add', $baseOfferPrice);
+                });
+
+                foreach ($variantOfferPrices as $variantId => $offerPrice) {
+                    $query->orWhere(function (Builder $variantQuery) use ($variantId, $offerPrice): void {
+                        $variantQuery
+                            ->where('product_variation_id', $variantId)
+                            ->where('price_at_add', $offerPrice);
+                    });
+                }
+            })
+            ->when($promotion->starts_at, fn (Builder $query): Builder => $query->where('created_at', '>=', $promotion->starts_at))
+            ->when($promotion->ends_at, fn (Builder $query): Builder => $query->where('created_at', '<=', $promotion->ends_at))
+            ->count();
+    }
+
+    private function countProductBenefitedOrders(Product $product, Promotion $promotion): int
+    {
+        $discountType = (string) $promotion->discount_type;
+        $discountValue = (float) $promotion->discount_value;
+
+        $baseOfferPrice = number_format(
+            $this->applyPromotionDiscount((float) $product->base_price, $discountType, $discountValue),
+            2,
+            '.',
+            ''
+        );
+
+        $variantOfferPrices = $product->variants
+            ->mapWithKeys(fn ($variant) => [
+                (int) $variant->id => number_format(
+                    $this->applyPromotionDiscount((float) ($variant->price ?? $product->base_price), $discountType, $discountValue),
+                    2,
+                    '.',
+                    ''
+                ),
+            ]);
+
+        return (int) Order::query()
+            ->where('product_id', $product->id)
+            ->where(function (Builder $query) use ($baseOfferPrice, $variantOfferPrices): void {
+                $query->where(function (Builder $baseQuery) use ($baseOfferPrice): void {
+                    $baseQuery
+                        ->whereNull('product_variation_id')
+                        ->where('unit_price', $baseOfferPrice);
+                });
+
+                foreach ($variantOfferPrices as $variantId => $offerPrice) {
+                    $query->orWhere(function (Builder $variantQuery) use ($variantId, $offerPrice): void {
+                        $variantQuery
+                            ->where('product_variation_id', $variantId)
+                            ->where('unit_price', $offerPrice);
+                    });
+                }
+            })
+            ->when($promotion->starts_at, fn (Builder $query): Builder => $query->where('created_at', '>=', $promotion->starts_at))
+            ->when($promotion->ends_at, fn (Builder $query): Builder => $query->where('created_at', '<=', $promotion->ends_at))
+            ->count();
+    }
+
+    private function applyPromotionDiscount(float $price, string $discountType, float $discountValue): float
+    {
+        $calculated = $discountType === 'percentage'
+            ? $price - (($price * $discountValue) / 100)
+            : $price - $discountValue;
+
+        return max($calculated, 0);
     }
 }

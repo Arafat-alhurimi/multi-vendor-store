@@ -160,78 +160,140 @@ class ViewUser extends ViewRecord
     {
         return $schema
             ->schema([
-                TextEntry::make('name')->label('الاسم'),
-                TextEntry::make('email')->label('البريد الإلكتروني')->placeholder('-'),
-                TextEntry::make('phone')->label('رقم الهاتف')->placeholder('-'),
-                TextEntry::make('role')->label('الدور'),
-                TextEntry::make('otp_verified_at')
-                    ->label('حالة التحقق')
-                    ->formatStateUsing(fn ($state): string => $state ? 'تم التحقق' : 'غير متحقق'),
-                TextEntry::make('is_active')
-                    ->label('الحالة')
-                    ->formatStateUsing(fn (bool $state): string => $state ? 'نشط' : 'غير نشط'),
-                TextEntry::make('approval_status')
-                    ->label('حالة الموافقة')
-                    ->visible(fn (?User $record): bool => $record?->role === 'vendor')
-                    ->badge()
-                    ->state(function (?User $record): string {
-                        if (! $record) {
-                            return '-';
-                        }
+                Section::make('معلومات الحساب')
+                    ->description('ملخص الحالة العامة وبيانات التواصل')
+                    ->schema([
+                        TextEntry::make('name')
+                            ->label('الاسم')
+                            ->weight('bold')
+                            ->icon('heroicon-o-user'),
+                        TextEntry::make('email')
+                            ->label('البريد الإلكتروني')
+                            ->icon('heroicon-o-envelope')
+                            ->placeholder('-'),
+                        TextEntry::make('phone')
+                            ->label('رقم الهاتف')
+                            ->icon('heroicon-o-phone')
+                            ->placeholder('-'),
+                        TextEntry::make('role')
+                            ->label('الدور')
+                            ->badge()
+                            ->color(fn (?string $state): string => match ($state) {
+                                'admin' => 'danger',
+                                'vendor' => 'warning',
+                                default => 'info',
+                            }),
+                        TextEntry::make('otp_verified_at')
+                            ->label('التحقق')
+                            ->badge()
+                            ->formatStateUsing(fn ($state): string => $state ? 'تم التحقق' : 'غير متحقق')
+                            ->color(fn ($state): string => $state ? 'success' : 'danger'),
+                        TextEntry::make('is_active')
+                            ->label('حالة الحساب')
+                            ->badge()
+                            ->formatStateUsing(fn (bool $state): string => $state ? 'نشط' : 'غير نشط')
+                            ->color(fn (bool $state): string => $state ? 'success' : 'danger'),
+                        TextEntry::make('approval_status')
+                            ->label('حالة الموافقة')
+                            ->visible(fn (?User $record): bool => $record?->role === 'vendor')
+                            ->badge()
+                            ->state(function (?User $record): string {
+                                if (! $record) {
+                                    return '-';
+                                }
 
-                        if ($record->is_active) {
-                            return 'تمت الموافقة';
-                        }
+                                if ($record->is_active) {
+                                    return 'تمت الموافقة';
+                                }
 
-                        if (! filled($record->otp_verified_at)) {
-                            return 'بانتظار التحقق من OTP';
-                        }
+                                if (! filled($record->otp_verified_at)) {
+                                    return 'بانتظار التحقق من OTP';
+                                }
 
-                        if (! $record->store) {
-                            return 'لم ينشئ متجر بعد';
-                        }
+                                if (! $record->store) {
+                                    return 'لم ينشئ متجر بعد';
+                                }
 
-                        return 'جاهز للموافقة';
-                    })
-                    ->color(function (?User $record): string {
-                        if (! $record) {
-                            return 'gray';
-                        }
+                                return 'جاهز للموافقة';
+                            })
+                            ->color(function (?User $record): string {
+                                if (! $record) {
+                                    return 'gray';
+                                }
 
-                        if ($record->is_active) {
-                            return 'success';
-                        }
+                                if ($record->is_active) {
+                                    return 'success';
+                                }
 
-                        if (! filled($record->otp_verified_at)) {
-                            return 'warning';
-                        }
+                                if (! filled($record->otp_verified_at)) {
+                                    return 'warning';
+                                }
 
-                        if (! $record->store) {
-                            return 'gray';
-                        }
+                                if (! $record->store) {
+                                    return 'gray';
+                                }
 
-                        return 'warning';
-                    }),
-                TextEntry::make('vendorFinancialDetail.kuraimi_account_number')
-                    ->label('رقم حساب الكريمي')
+                                return 'warning';
+                            }),
+                    ])
+                    ->columns(3)
+                    ->columnSpanFull(),
+                Section::make('الملخص السريع')
+                    ->description('أرقام مختصرة لنشاط العميل')
+                    ->visible(fn (?User $record): bool => $record?->role === 'customer')
+                    ->schema([
+                        TextEntry::make('cart_count')
+                            ->label('السلة')
+                            ->state(fn (): int => (int) $this->getRecord()->cartItems()->count())
+                            ->badge()
+                            ->color('info'),
+                        TextEntry::make('orders_count')
+                            ->label('الطلبات')
+                            ->state(fn (): int => (int) $this->getRecord()->orders()->count())
+                            ->badge()
+                            ->color('primary'),
+                        TextEntry::make('comments_count')
+                            ->label('التعليقات')
+                            ->state(fn (): int => (int) $this->getRecord()->comments()->count())
+                            ->badge()
+                            ->color('warning'),
+                        TextEntry::make('favorites_count')
+                            ->label('المفضلة')
+                            ->state(fn (): int => (int) $this->getRecord()->favorites()->count())
+                            ->badge()
+                            ->color('success'),
+                        TextEntry::make('reports_count')
+                            ->label('البلاغات')
+                            ->state(fn (): int => (int) $this->getRecord()->reports()->count())
+                            ->badge()
+                            ->color('danger'),
+                    ])
+                    ->columns(5)
+                    ->columnSpanFull(),
+                Section::make('البيانات المالية')
+                    ->description('تظهر فقط للبائعين')
                     ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
-                TextEntry::make('vendorFinancialDetail.kuraimi_account_name')
-                    ->label('اسم حساب الكريمي')
-                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
-                TextEntry::make('vendorFinancialDetail.jeeb_id')
-                    ->label('معرّف جيب')
-                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
-                TextEntry::make('vendorFinancialDetail.jeeb_name')
-                    ->label('اسم حساب جيب')
-                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
-                TextEntry::make('vendorFinancialDetail.total_commission_owed')
-                    ->label('إجمالي العمولات المستحقة')
-                    ->visible(fn (?User $record): bool => $record?->role !== 'customer')
-                    ->placeholder('-'),
+                    ->schema([
+                        TextEntry::make('vendorFinancialDetail.kuraimi_account_number')
+                            ->label('رقم حساب الكريمي')
+                            ->placeholder('-'),
+                        TextEntry::make('vendorFinancialDetail.kuraimi_account_name')
+                            ->label('اسم حساب الكريمي')
+                            ->placeholder('-'),
+                        TextEntry::make('vendorFinancialDetail.jeeb_id')
+                            ->label('معرّف جيب')
+                            ->placeholder('-'),
+                        TextEntry::make('vendorFinancialDetail.jeeb_name')
+                            ->label('اسم حساب جيب')
+                            ->placeholder('-'),
+                        TextEntry::make('vendorFinancialDetail.total_commission_owed')
+                            ->label('إجمالي العمولات المستحقة')
+                            ->badge()
+                            ->color('warning')
+                            ->placeholder('-'),
+                    ])
+                    ->columns(2)
+                    ->columnSpanFull(),
                 Tabs::make('البيانات الشرائية')
                     ->visible(fn (?User $record): bool => $record?->role === 'customer')
                     ->tabs([
@@ -277,7 +339,30 @@ class ViewUser extends ViewRecord
                                     ->label('التعليقات')
                                     ->placeholder('لا توجد تعليقات')
                                     ->schema([
-                                        TextEntry::make('body')->label('التعليق')->placeholder('-')->columnSpanFull(),
+                                        TextEntry::make('body')
+                                            ->label('التعليق')
+                                            ->placeholder('-')
+                                            ->columnSpanFull()
+                                            ->extraAttributes(fn (?Comment $record): array => $record ? ['id' => 'comment-' . $record->id] : [])
+                                            ->suffixAction(
+                                                Action::make('deleteUserComment')
+                                                    ->icon('heroicon-o-x-mark')
+                                                    ->tooltip('حذف التعليق')
+                                                    ->color('danger')
+                                                    ->requiresConfirmation()
+                                                    ->action(function (?Comment $record): void {
+                                                        if (! $record) {
+                                                            return;
+                                                        }
+
+                                                        $this->deleteComment($record->id);
+                                                    })
+                                            ),
+                                        TextEntry::make('comment_reports_count')
+                                            ->label('بلاغات على التعليق')
+                                            ->state(fn (?Comment $record): int => (int) ($record?->reports()->count() ?? 0))
+                                            ->badge()
+                                            ->color(fn (?Comment $record): string => (int) ($record?->reports()->count() ?? 0) > 0 ? 'danger' : 'success'),
                                         TextEntry::make('comment_target_type')
                                             ->label('نوع الهدف')
                                             ->state(function (?Comment $record): string {
@@ -504,5 +589,10 @@ class ViewUser extends ViewRecord
                     ->columnSpanFull(),
             ])
             ->columns(2);
+    }
+
+    public function deleteComment(int|string $commentId): void
+    {
+        $this->getRecord()->comments()->whereKey($commentId)->delete();
     }
 }

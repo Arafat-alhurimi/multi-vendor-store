@@ -24,13 +24,17 @@ class CategoryResource extends Resource
 {
     protected static ?string $model = Category::class;
 
+    protected static string | \BackedEnum | null $navigationIcon = 'heroicon-o-squares-2x2';
+
     protected static ?string $modelLabel = 'فئة رئيسية';
 
     protected static ?string $pluralModelLabel = 'الفئات الرئيسية';
 
     protected static ?string $navigationLabel = 'الفئات الرئيسية';
 
-    protected static string | \UnitEnum | null $navigationGroup = 'إدارة التجارة';
+    protected static string | \UnitEnum | null $navigationGroup = null;
+
+    protected static ?int $navigationSort = 4;
 
     public static function form(Schema $schema): Schema
     {
