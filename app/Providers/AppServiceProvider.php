@@ -80,6 +80,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        if (config('app.env') !== 'local') {
+            \Illuminate\Support\Facades\URL::forceScheme('https');
+        }
+
         if (PHP_SAPI !== 'cli') {
             @ini_set('max_execution_time', '300');
 
