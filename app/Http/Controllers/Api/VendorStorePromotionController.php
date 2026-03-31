@@ -26,7 +26,7 @@ class VendorStorePromotionController extends Controller
 
         $data = $request->validate([
             'title' => 'required|string|max:255',
-            'image' => 'nullable|image|max:4096',
+            'image' => 'nullable|url|max:2048',
             'discount_type' => 'required|in:percentage,fixed',
             'discount_value' => 'required|numeric|min:0',
             'starts_at' => 'required|date',
@@ -59,10 +59,6 @@ class VendorStorePromotionController extends Controller
 
         if ($hasActiveDiscountConflict) {
             return response()->json(['message' => 'لا يمكن إنشاء العرض لأن بعض المنتجات عليها خصومات نشطة.'], 422);
-        }
-
-        if ($request->hasFile('image')) {
-            $data['image'] = $request->file('image')->store('promotions', 's3');
         }
 
         $promotion = DB::transaction(function () use ($data, $scope, $store): Promotion {
