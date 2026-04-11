@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\CommentController;
 use App\Http\Controllers\Api\CommentReplyController;
 use App\Http\Controllers\Api\CartController;
 use App\Http\Controllers\Api\FavoriteController;
+use App\Http\Controllers\Api\HomeController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProductVariantResolverController;
@@ -41,12 +42,14 @@ Route::post('/vendor/onboarding/presign', [VendorOnboardingController::class, 'p
 Route::post('/vendor/onboarding/presign-batch', [VendorOnboardingController::class, 'presignBatch']);
 
 // تسجيل الدخول بالهاتف وكلمة المرور
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'log
+in']);
 
 // مرحلة التحقق من توكن فايربيز (بعد وصول الـ SMS للموبايل)
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
 
 Route::post('/forgot-password', [AuthController::class, 'forgotPassword']);
+Route::get('/home', [HomeController::class, 'index']);
 Route::get('/promotions/{promotion}/products', [VendorPromotionController::class, 'products']);
 Route::get('/vendor/ad-packages', [VendorAdPackageController::class, 'index']);
 Route::get('/ads/active', [VendorAdController::class, 'active']);

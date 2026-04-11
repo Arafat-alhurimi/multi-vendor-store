@@ -39,35 +39,12 @@ class ProductDiscount extends Model
 
     public function scopeCurrentlyActive(Builder $query, ?CarbonInterface $at = null): Builder
     {
-        $dateTime = $at ?? now();
-
-        return $query
-            ->where('is_active', true)
-            ->where(function (Builder $innerQuery) use ($dateTime): void {
-                $innerQuery->whereNull('starts_at')->orWhere('starts_at', '<=', $dateTime);
-            })
-            ->where(function (Builder $innerQuery) use ($dateTime): void {
-                $innerQuery->whereNull('ends_at')->orWhere('ends_at', '>=', $dateTime);
-            });
+        return $query->where('is_active', true);
     }
 
     public function isEffectivelyActive(?CarbonInterface $at = null): bool
     {
-        $dateTime = $at ?? now();
-
-        if (! $this->is_active) {
-            return false;
-        }
-
-        if ($this->starts_at && $this->starts_at->gt($dateTime)) {
-            return false;
-        }
-
-        if ($this->ends_at && $this->ends_at->lt($dateTime)) {
-            return false;
-        }
-
-        return true;
+        return (bool) $this->is_active;
     }
 
     public function getEffectiveIsActiveAttribute(): bool
