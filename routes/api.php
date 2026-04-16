@@ -1,3 +1,4 @@
+// بحث عام في المنتجات، التصنيفات، المتاجر، العروض
 <?php
 
 use Illuminate\Http\Request;
@@ -29,10 +30,12 @@ use App\Http\Controllers\Api\VendorPromotionController;
 use App\Http\Controllers\Api\VendorStorePromotionController;
 use App\Http\Controllers\Api\VendorOnboardingController;
 
+
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+Route::get('/search', [\App\Http\Controllers\Api\SearchController::class, 'search']);
 
 
 // مرحلة إرسال البيانات (قبل الـ OTP)
