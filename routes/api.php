@@ -1,4 +1,4 @@
-// بحث عام في المنتجات، التصنيفات، المتاجر، العروض
+
 <?php
 
 use Illuminate\Http\Request;
@@ -29,13 +29,14 @@ use App\Http\Controllers\Api\VendorFinancialDetailController;
 use App\Http\Controllers\Api\VendorPromotionController;
 use App\Http\Controllers\Api\VendorStorePromotionController;
 use App\Http\Controllers\Api\VendorOnboardingController;
+use App\Http\Controllers\Api\SearchController;
 
 
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
-Route::get('/search', [\App\Http\Controllers\Api\SearchController::class, 'search']);
+
 
 
 // مرحلة إرسال البيانات (قبل الـ OTP)
@@ -59,6 +60,7 @@ Route::get('/ads/active', [VendorAdController::class, 'active']);
 Route::get('/products/{product}/details', [ProductController::class, 'show']);
 Route::get('/products/{product}/resolve-variant', [ProductVariantResolverController::class, 'resolve']);
 Route::post('/products/{product}/resolve-variant', [ProductVariantResolverController::class, 'resolve']);
+Route::get('/search', [SearchController::class, 'search']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/stores', [StoreController::class, 'store']);
