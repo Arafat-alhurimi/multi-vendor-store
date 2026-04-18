@@ -12,6 +12,10 @@ class ProductController extends Controller
 {
     public function show(Request $request, Product $product, PriceService $priceService)
     {
+        // تحديد اللغة من الطلب أو افتراضية عربية
+        $lang = $request->query('lang', 'ar');
+        $lang = in_array($lang, ['ar', 'en'], true) ? $lang : 'ar';
+
         $product->load([
             'store:id,user_id,name,logo',
             'subcategory:id,category_id,name_ar,name_en',
@@ -38,22 +42,24 @@ class ProductController extends Controller
         $basePrice = (float) $product->base_price;
         $finalPrice = (float) $priceService->resolveFinalPrice($product);
 
+        // دالة مساعدة للتعريب
+        $localize = function ($ar, $en) use ($lang) {
+            return $lang === 'en' ? ($en ?: $ar) : ($ar ?: $en);
+        };
+
         $groupedAttributes = $product->attributeValues
             ->groupBy('attribute_id')
-            ->map(function ($values) {
+            ->map(function ($values) use ($lang, $localize) {
                 $attribute = $values->first()?->attribute;
-
                 return [
                     'attribute_id' => $attribute?->id,
-                    'name_ar' => $attribute?->name_ar,
-                    'name_en' => $attribute?->name_en,
+                    'name' => $localize($attribute?->name_ar, $attribute?->name_en),
                     'values' => $values
                         ->unique('id')
                         ->values()
                         ->map(fn ($value) => [
                             'id' => $value->id,
-                            'value_ar' => $value->value_ar,
-                            'value_en' => $value->value_en,
+                            'value' => $localize($value->value_ar, $value->value_en),
                         ])
                         ->all(),
                 ];
@@ -71,19 +77,15 @@ class ProductController extends Controller
                 'price' => number_format($variantFinalPrice, 2, '.', ''),
                 'price_original' => number_format($variantOriginalPrice, 2, '.', ''),
                 'price_final' => number_format($variantFinalPrice, 2, '.', ''),
-                'has_discount_or_promotion' => $variantFinalPrice < $variantOriginalPrice,
-                'discount_amount' => number_format(max($variantOriginalPrice - $variantFinalPrice, 0), 2, '.', ''),
+                'has_offer' => $variantFinalPrice < $variantOriginalPrice,
                 'stock' => (int) $variant->stock,
                 'image' => $variant->image,
-                'attributes' => $variant->attributeValues
+                // فقط عرض attribute_id و value_id
+                'attribute_values' => $variant->attributeValues
                     ->map(function ($attributeValue) {
                         return [
                             'attribute_id' => $attributeValue->attribute?->id,
-                            'attribute_name_ar' => $attributeValue->attribute?->name_ar,
-                            'attribute_name_en' => $attributeValue->attribute?->name_en,
                             'value_id' => $attributeValue->id,
-                            'value_ar' => $attributeValue->value_ar,
-                            'value_en' => $attributeValue->value_en,
                         ];
                     })
                     ->values()
@@ -94,21 +96,24 @@ class ProductController extends Controller
         return response()->json([
             'product' => [
                 'id' => $product->id,
-                'name_ar' => $product->name_ar,
-                'name_en' => $product->name_en,
-                'description_ar' => $product->description_ar,
-                'description_en' => $product->description_en,
+                'name' => $localize($product->name_ar, $product->name_en),
+                'description' => $localize($product->description_ar, $product->description_en),
                 'stock' => (int) $product->stock,
                 'is_active' => (bool) $product->is_active,
-                'store' => $product->store,
-                'subcategory' => $product->subcategory,
-                'media' => $product->media,
-                'pricing' => [
-                    'base_price' => number_format($basePrice, 2, '.', ''),
-                    'final_price' => number_format($finalPrice, 2, '.', ''),
-                    'has_discount_or_promotion' => $finalPrice < $basePrice,
-                    'discount_amount' => number_format(max($basePrice - $finalPrice, 0), 2, '.', ''),
+                'base_price' => number_format($basePrice, 2, '.', ''),
+                'final_price' => number_format($finalPrice, 2, '.', ''),
+                'has_offer' => $finalPrice < $basePrice,
+                'store' => [
+                    'id' => $product->store->id ?? null,
+                    'name' => $product->store->name ?? null,
+                    'logo' => $product->store->logo ?? null,
                 ],
+                'subcategory' => $product->subcategory ? [
+                    'id' => $product->subcategory->id,
+                    'category_id' => $product->subcategory->category_id,
+                    'name' => $localize($product->subcategory->name_ar, $product->subcategory->name_en),
+                ] : null,
+                'media' => $product->media,
                 'rating' => [
                     'average' => $averageRating,
                     'count' => $ratingsCount,
@@ -121,6 +126,7 @@ class ProductController extends Controller
                 'attributes' => $groupedAttributes,
             ],
             'comments' => $comments,
+            'lang' => $lang,
         ]);
     }
 
