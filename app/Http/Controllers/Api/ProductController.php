@@ -58,7 +58,7 @@ class ProductController extends Controller
                         ->unique('id')
                         ->values()
                         ->map(fn ($value) => [
-                            'id' => $value->id,
+                             'id' => $value->id,
                             'value' => $localize($value->value_ar, $value->value_en),
                         ])
                         ->all(),
@@ -126,6 +126,141 @@ class ProductController extends Controller
                 'attributes' => $groupedAttributes,
             ],
             'comments' => $comments,
+            'lang' => $lang,
+        ]);
+    }
+
+    public function details(Request $request, PriceService $priceService)
+    {
+        $lang = $request->query('lang', 'ar');
+        $lang = in_array($lang, ['ar', 'en'], true) ? $lang : 'ar';
+
+        $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'integer|exists:products,id',
+            'comments_per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $ids = array_values(array_unique($data['ids']));
+        $commentsPerPage = min(max((int) ($data['comments_per_page'] ?? 20), 1), 100);
+
+        $products = Product::query()
+            ->whereIn('id', $ids)
+            ->with([
+                'store:id,user_id,name,logo',
+                'subcategory:id,category_id,name_ar,name_en',
+                'media:id,mediable_id,mediable_type,file_type,url',
+                'variants:id,product_id,sku,price,stock,image',
+                'variants.attributeValues:id,attribute_id,product_id,value_ar,value_en',
+                'variants.attributeValues.attribute:id,name_ar,name_en',
+                'attributeValues:id,attribute_id,product_id,value_ar,value_en',
+                'attributeValues.attribute:id,name_ar,name_en',
+            ])
+            ->get()
+            ->keyBy('id');
+
+        $orderedProducts = collect($ids)
+            ->map(fn (int $id) => $products->get($id))
+            ->filter()
+            ->values();
+
+        $localize = function ($ar, $en) use ($lang) {
+            return $lang === 'en' ? ($en ?: $ar) : ($ar ?: $en);
+        };
+
+        return response()->json([
+            'products' => $orderedProducts->map(function (Product $product) use ($lang, $commentsPerPage, $priceService, $localize) {
+                $averageRating = round((float) $product->ratings()->avg('value'), 2);
+                $ratingsCount = (int) $product->ratings()->count();
+                $basePrice = (float) $product->base_price;
+                $finalPrice = (float) $priceService->resolveFinalPrice($product);
+
+                $groupedAttributes = $product->attributeValues
+                    ->groupBy('attribute_id')
+                    ->map(function ($values) use ($localize) {
+                        $attribute = $values->first()?->attribute;
+                        return [
+                            'attribute_id' => $attribute?->id,
+                            'name' => $localize($attribute?->name_ar, $attribute?->name_en),
+                            'values' => $values
+                                ->unique('id')
+                                ->values()
+                                ->map(fn ($value) => [
+                                    'id' => $value->id,
+                                    'value' => $localize($value->value_ar, $value->value_en),
+                                ])
+                                ->all(),
+                        ];
+                    })
+                    ->values()
+                    ->all();
+
+                $variants = $product->variants->map(function ($variant) use ($product, $priceService) {
+                    $variantOriginalPrice = (float) ($variant->price ?? $product->base_price);
+                    $variantFinalPrice = (float) $priceService->resolveFinalPriceForVariant($product, $variant);
+
+                    return [
+                        'id' => $variant->id,
+                        'sku' => $variant->sku,
+                        'price' => number_format($variantFinalPrice, 2, '.', ''),
+                        'price_original' => number_format($variantOriginalPrice, 2, '.', ''),
+                        'price_final' => number_format($variantFinalPrice, 2, '.', ''),
+                        'has_offer' => $variantFinalPrice < $variantOriginalPrice,
+                        'stock' => (int) $variant->stock,
+                        'image' => $variant->image,
+                        'attribute_values' => $variant->attributeValues
+                            ->map(function ($attributeValue) {
+                                return [
+                                    'attribute_id' => $attributeValue->attribute?->id,
+                                    'value_id' => $attributeValue->id,
+                                ];
+                            })
+                            ->values()
+                            ->all(),
+                    ];
+                })->values()->all();
+
+                return [
+                    'product' => [
+                        'id' => $product->id,
+                        'name' => $localize($product->name_ar, $product->name_en),
+                        'description' => $localize($product->description_ar, $product->description_en),
+                        'stock' => (int) $product->stock,
+                        'is_active' => (bool) $product->is_active,
+                        'base_price' => number_format($basePrice, 2, '.', ''),
+                        'final_price' => number_format($finalPrice, 2, '.', ''),
+                        'has_offer' => $finalPrice < $basePrice,
+                        'store' => [
+                            'id' => $product->store->id ?? null,
+                            'name' => $product->store->name ?? null,
+                            'logo' => $product->store->logo ?? null,
+                        ],
+                        'subcategory' => $product->subcategory ? [
+                            'id' => $product->subcategory->id,
+                            'category_id' => $product->subcategory->category_id,
+                            'name' => $localize($product->subcategory->name_ar, $product->subcategory->name_en),
+                        ] : null,
+                        'media' => $product->media,
+                        'rating' => [
+                            'average' => $averageRating,
+                            'count' => $ratingsCount,
+                        ],
+                        'has_variants' => count($variants) > 0,
+                        'selection_mode' => count($variants) > 0
+                            ? 'variant_or_attribute_by_attribute'
+                            : 'single_product',
+                        'variants' => $variants,
+                        'attributes' => $groupedAttributes,
+                    ],
+                    'comments' => $product->comments()
+                        ->with([
+                            'user:id,name,avatar',
+                            'replies.user:id,name,avatar',
+                        ])
+                        ->latest()
+                        ->paginate($commentsPerPage),
+                ];
+            })->all(),
             'lang' => $lang,
         ]);
     }

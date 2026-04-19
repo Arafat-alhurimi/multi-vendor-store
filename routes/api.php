@@ -57,6 +57,8 @@ Route::get('/home', [HomeController::class, 'index']);
 Route::get('/promotions/{promotion}/products', [VendorPromotionController::class, 'products']);
 Route::get('/vendor/ad-packages', [VendorAdPackageController::class, 'index']);
 Route::get('/ads/active', [VendorAdController::class, 'active']);
+Route::get('/products/details', [ProductController::class, 'details']);
+
 Route::get('/products/{product}/details', [ProductController::class, 'show']);
 Route::get('/products/{product}/resolve-variant', [ProductVariantResolverController::class, 'resolve']);
 Route::post('/products/{product}/resolve-variant', [ProductVariantResolverController::class, 'resolve']);
